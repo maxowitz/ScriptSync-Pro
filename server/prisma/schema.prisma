@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+  lastLogin    DateTime?
+  isActive     Boolean  @default(true)
+
+  ownedProjects   Project[]        @relation("ProjectOwner")
+  memberships     ProjectMember[]
+  uploadedClips   Clip[]           @relation("ClipUploader")
+  screenplays     Screenplay[]     @relation("ScreenplayUploader")
+  approvedMappings ScriptMapping[] @relation("MappingApprover")
+  refreshTokens   RefreshToken[]
+  sentInvites     Invite[]         @relation("InviteSender")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revoked   Boolean  @default(false)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model Project {
+  id        String        @id @default(uuid())
+  name      String
+  ownerId   String
+  owner     User          @relation("ProjectOwner", fields: [ownerId], references: [id])
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  status    ProjectStatus @default(ACTIVE)
+
+  members     ProjectMember[]
+  screenplays Screenplay[]
+  clips       Clip[]
+  mappings    ScriptMapping[]
+  invites     Invite[]
+
+  @@index([ownerId])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model ProjectMember {
+  id         String      @id @default(uuid())
+  projectId  String
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       MemberRole
+  invitedAt  DateTime    @default(now())
+  acceptedAt DateTime?
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+  @@index([userId])
+}
+
+enum MemberRole {
+  OWNER
+  EDITOR
+  UPLOADER
+  VIEWER
+}
+
+model Screenplay {
+  id         String   @id @default(uuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  filename   String
+  rawText    String
+  parsedJSON Json?
+  uploadedAt DateTime @default(now())
+  uploadedBy String
+  uploader   User     @relation("ScreenplayUploader", fields: [uploadedBy], references: [id])
+
+  mappings ScriptMapping[]
+
+  @@index([projectId])
+}
+
+model Clip {
+  id               String     @id @default(uuid())
+  projectId        String
+  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name             String
+  shotNumber       String?
+  takeNumber       String?
+  uploadedBy       String
+  uploader         User       @relation("ClipUploader", fields: [uploadedBy], references: [id])
+  uploadedAt       DateTime   @default(now())
+  source           ClipSource
+  localPath        String?
+  remoteStorageKey String?
+  duration         Float?
+  status           ClipStatus @default(PENDING)
+
+  transcript Transcript?
+  mappings   ScriptMapping[]
+
+  @@index([projectId])
+  @@index([uploadedBy])
+}
+
+enum ClipSource {
+  LOCAL
+  REMOTE
+}
+
+enum ClipStatus {
+  PENDING
+  TRANSCRIBING
+  TRANSCRIBED
+  FAILED
+}
+
+model Transcript {
+  id          String   @id @default(uuid())
+  clipId      String   @unique
+  clip        Clip     @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  words       Json
+  engine      String   @default("whisper")
+  model       String?
+  completedAt DateTime?
+  rawOutput   String?
+
+  @@index([clipId])
+}
+
+model ScriptMapping {
+  id             String       @id @default(uuid())
+  screenplayId   String
+  screenplay     Screenplay   @relation(fields: [screenplayId], references: [id], onDelete: Cascade)
+  dialogueLineId String
+  clipId         String
+  clip           Clip         @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  timecodeIn     String
+  timecodeOut    String
+  confidence     Float?
+  matchMethod    MatchMethod
+  approvedBy     String?
+  approver       User?        @relation("MappingApprover", fields: [approvedBy], references: [id])
+  approvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([screenplayId])
+  @@index([clipId])
+  @@index([projectId])
+}
+
+enum MatchMethod {
+  FUZZY
+  CLAUDE
+  MANUAL
+}
+
+model Invite {
+  id         String     @id @default(uuid())
+  projectId  String
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  email      String
+  role       MemberRole
+  token      String     @unique
+  sentAt     DateTime   @default(now())
+  sentBy     String
+  sender     User       @relation("InviteSender", fields: [sentBy], references: [id])
+  expiresAt  DateTime
+  acceptedAt DateTime?
+
+  @@index([projectId])
+  @@index([token])
+  @@index([email])
+}

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScriptSync Pro</title>
+  <link rel="stylesheet" href="styles/panel.css" />
+</head>
+<body>
+
+  <!-- Login Section -->
+  <section id="login-section" class="login-section">
+    <div class="login-container">
+      <h1 class="app-title">ScriptSync Pro</h1>
+      <p class="app-subtitle">Script-to-timeline synchronization</p>
+      <div id="login-form-container"></div>
+    </div>
+  </section>
+
+  <!-- Main Application -->
+  <section id="main-app" class="main-app hidden">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <h2 class="header-title">ScriptSync Pro</h2>
+        <span id="connection-status" class="status-badge status-disconnected">Offline</span>
+      </div>
+      <div class="header-right">
+        <select id="project-selector" class="select-input">
+          <option value="">Select Project...</option>
+        </select>
+        <button id="btn-logout" class="btn btn-sm btn-secondary">Logout</button>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="screenplay">Screenplay</button>
+      <button class="tab-btn" data-tab="clips">Clips</button>
+      <button class="tab-btn" data-tab="mappings">Mappings</button>
+      <button class="tab-btn" data-tab="sync">Sync</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </nav>
+
+    <!-- Tab Content Areas -->
+    <div class="tab-content-wrapper">
+      <div id="tab-screenplay" class="tab-content active">
+        <div id="screenplay-panel-root"></div>
+      </div>
+      <div id="tab-clips" class="tab-content">
+        <div id="clips-panel-root"></div>
+      </div>
+      <div id="tab-mappings" class="tab-content">
+        <div id="playback-panel-root"></div>
+        <div id="metadata-panel-root"></div>
+      </div>
+      <div id="tab-sync" class="tab-content">
+        <div id="sync-panel-root"></div>
+      </div>
+      <div id="tab-settings" class="tab-content">
+        <div id="settings-panel-root"></div>
+      </div>
+    </div>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+      <span id="status-message">Ready</span>
+      <span id="helper-status" class="status-badge status-disconnected">Helper: Offline</span>
+    </footer>
+  </section>
+
+  <!-- Scripts -->
+  <script src="src/utils/timecode.js"></script>
+  <script src="src/utils/ffmpeg.js"></script>
+  <script src="src/utils/whisper.js"></script>
+  <script src="src/db/store.js"></script>
+  <script src="src/auth/tokenStore.js"></script>
+  <script src="src/cloud/api.js"></script>
+  <script src="src/cloud/socket.js"></script>
+  <script src="src/auth/login.js"></script>
+  <script src="src/screenplay/schema.js"></script>
+  <script src="src/screenplay/importer.js"></script>
+  <script src="src/clips/nameParser.js"></script>
+  <script src="src/clips/indexer.js"></script>
+  <script src="src/transcription/parser.js"></script>
+  <script src="src/transcription/engine.js"></script>
+  <script src="src/mapping/aligner.js"></script>
+  <script src="src/mapping/claudeMatch.js"></script>
+  <script src="src/cloud/syncPanel.js"></script>
+  <script src="src/ui/screenplay-panel.js"></script>
+  <script src="src/ui/playback-panel.js"></script>
+  <script src="src/ui/metadata-panel.js"></script>
+  <script src="src/ui/settings-panel.js"></script>
+  <script src="src/ui/sync-panel.js"></script>
+  <script src="src/main.js"></script>
+</body>
+</html>

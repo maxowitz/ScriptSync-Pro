@@ -1,0 +1,27 @@
+{
+  "id": "com.scriptsyncpro.plugin",
+  "name": "ScriptSync Pro",
+  "version": "1.0.0",
+  "main": "index.html",
+  "host": {
+    "app": "premierepro",
+    "minVersion": "24.0.0"
+  },
+  "manifestVersion": 5,
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "scriptsync-main",
+      "label": { "default": "ScriptSync Pro" },
+      "minimumSize": { "width": 400, "height": 500 },
+      "maximumSize": { "width": 1200, "height": 2000 },
+      "preferredDockedSize": { "width": 500, "height": 700 },
+      "preferredFloatingSize": { "width": 500, "height": 700 }
+    }
+  ],
+  "requiredPermissions": {
+    "network": { "domains": ["*"] },
+    "localFileSystem": "fullAccess",
+    "clipboard": "readAndWrite"
+  }
+}

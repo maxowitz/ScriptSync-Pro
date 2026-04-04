@@ -1,0 +1,18 @@
+{
+  "name": "scriptsync-pro-helper",
+  "version": "1.0.0",
+  "description": "ScriptSync Pro local helper sidecar for FFmpeg and Whisper operations",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

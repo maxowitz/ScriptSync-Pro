@@ -1,0 +1,93 @@
+Title: The Digital Frontier
+Credit: Written by
+Author: Sample Author
+Draft date: 2026-04-04
+
+===
+
+INT. OFFICE - DAY
+
+A cluttered workspace. Dual monitors glow with editing timelines. MAYA (30s, sharp eyes, headphones around her neck) scrolls through footage. Her colleague DEREK (40s, calm, methodical) leans against the door frame.
+
+MAYA
+We have forty-two takes of scene twelve and not a single one lines up with the script.
+
+DEREK
+Did you check the revised pages? Writers changed half the dialogue on Friday.
+
+MAYA
+I'm looking at the revised pages. The actors improvised over the revisions.
+
+DEREK
+So we're matching improv to a script that nobody followed.
+
+MAYA
+Welcome to post-production.
+
+She pulls up a waveform on the second monitor.
+
+MAYA (CONT'D)
+At least the audio is clean. If I can get the transcription to match, the rest is just timecode math.
+
+EXT. PARKING LOT - NIGHT
+
+Rain patters on asphalt. Maya hurries toward her car, laptop bag slung over one shoulder. Her phone buzzes. She answers.
+
+MAYA
+Tell me you found the hard drive.
+
+DEREK (V.O.)
+Found it. And the backup. Both were in the vault the whole time.
+
+MAYA
+Of course they were.
+
+She stops at the car, fumbles for keys.
+
+MAYA (CONT'D)
+Alright, upload everything to the project tonight. I'll run the sync first thing tomorrow.
+
+She gets in, slams the door. Through the rain-streaked window we see her exhale.
+
+INT. SERVER ROOM - DAY
+
+Rows of rack-mounted servers hum. LEON (20s, hoodie, energy drink in hand) monitors a dashboard on a wall-mounted screen. Maya enters.
+
+LEON
+Your transcription jobs from last night are done. Six hours for the full feature.
+
+MAYA
+Accuracy?
+
+LEON
+Ninety-four percent on dialogue. The whispered scenes dragged it down a bit.
+
+MAYA
+Can we re-run those scenes with a larger model?
+
+LEON
+Already queued. The large-v3 model should handle the whispers. Just takes longer.
+
+MAYA
+How much longer?
+
+LEON
+Double the time. But you'll get word-level timestamps, so the mapping engine has more to work with.
+
+Maya nods, studying the dashboard.
+
+MAYA
+Queue it. And flag any segments under ninety percent confidence so I can review them manually.
+
+LEON
+Done. I'll ping you when it finishes.
+
+Maya turns to leave, then pauses.
+
+MAYA
+Leon -- make sure the output format has start and end times on every word. The plugin needs that for the timeline overlay.
+
+LEON
+Already in the config. You're good.
+
+FADE OUT.
