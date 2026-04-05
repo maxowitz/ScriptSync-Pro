@@ -18,10 +18,11 @@
    * Show a toast notification.
    */
   window.showToast = function(message, type = 'info', durationMs = 4000) {
+    const container = document.getElementById('toast-container') || document.body;
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     toast.textContent = message;
-    document.body.appendChild(toast);
+    container.appendChild(toast);
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transition = 'opacity 300ms';
@@ -29,25 +30,95 @@
     }, durationMs);
   };
 
-  // ---- Tab Navigation ----
+  // ---- Bottom Panel Tab Navigation ----
 
   function initTabNavigation() {
-    const tabBtns = document.querySelectorAll('.tab-btn');
-    const tabContents = document.querySelectorAll('.tab-content');
+    const bottomTabs = document.querySelectorAll('.bottom-tab');
+    const bottomPanels = document.querySelectorAll('.bottom-panel-content');
 
-    tabBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tabId = btn.dataset.tab;
+    bottomTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const panelId = tab.dataset.panel;
 
-        // Update button active state
-        tabBtns.forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
+        // Update active tab
+        bottomTabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
 
-        // Show corresponding content
-        tabContents.forEach(tc => {
-          tc.classList.toggle('active', tc.id === `tab-${tabId}`);
+        // Show corresponding panel
+        bottomPanels.forEach(p => {
+          p.classList.toggle('hidden', p.id !== `panel-${panelId}`);
         });
+
+        // Expand bottom panel if collapsed
+        const bottomPanel = document.getElementById('bottom-panel');
+        if (bottomPanel) bottomPanel.classList.remove('collapsed');
       });
+    });
+
+    // Toggle bottom panel collapse
+    const toggleBtn = document.getElementById('btn-toggle-bottom');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        const bottomPanel = document.getElementById('bottom-panel');
+        if (bottomPanel) bottomPanel.classList.toggle('collapsed');
+      });
+    }
+  }
+
+  // ---- Settings Overlay ----
+
+  function initSettingsOverlay() {
+    const overlay = document.getElementById('settings-overlay');
+    const openBtn = document.getElementById('btn-settings');
+    const closeBtn = document.getElementById('btn-close-settings');
+    const backdrop = overlay ? overlay.querySelector('.overlay-backdrop') : null;
+
+    if (openBtn && overlay) {
+      openBtn.addEventListener('click', () => overlay.classList.remove('hidden'));
+    }
+    if (closeBtn && overlay) {
+      closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+    }
+    if (backdrop && overlay) {
+      backdrop.addEventListener('click', () => overlay.classList.add('hidden'));
+    }
+  }
+
+  // ---- Split Divider Drag ----
+
+  function initSplitDivider() {
+    const divider = document.getElementById('split-divider');
+    const leftPanel = document.querySelector('.split-left');
+    const rightPanel = document.querySelector('.split-right');
+    if (!divider || !leftPanel || !rightPanel) return;
+
+    let isDragging = false;
+
+    divider.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      divider.classList.add('dragging');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const container = leftPanel.parentElement;
+      const rect = container.getBoundingClientRect();
+      const ratio = (e.clientX - rect.left) / rect.width;
+      const clamped = Math.max(0.2, Math.min(0.8, ratio));
+      leftPanel.style.flex = `0 0 ${clamped * 100}%`;
+      rightPanel.style.flex = `0 0 ${(1 - clamped) * 100}%`;
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        divider.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
     });
   }
 
@@ -127,6 +198,11 @@
           label: m.character ? `${m.character}: ${(m.dialogueText || '').substring(0, 30)}` : (m.dialogueText || '').substring(0, 40)
         }));
       PlaybackPanel.setMappedRegions(regions);
+
+      // Feed mappings to matches panel
+      if (typeof MatchesPanel !== 'undefined') {
+        MatchesPanel.setMappings(savedMappings);
+      }
     }
 
     // Scan local clips
@@ -350,6 +426,9 @@
     MetadataPanel.render();
     SettingsPanel.render();
     SyncPanel.render();
+    if (typeof MatchesPanel !== 'undefined') {
+      MatchesPanel.init();
+    }
   }
 
   // ---- Main Init ----
@@ -358,6 +437,8 @@
     console.log('[ScriptSync Pro] Initializing...');
 
     initTabNavigation();
+    initSettingsOverlay();
+    initSplitDivider();
     initLogout();
     initPanels();
 

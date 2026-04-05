@@ -32,8 +32,8 @@ const SocketClient = (() => {
     _connected = connected;
     const statusEl = document.getElementById('connection-status');
     if (statusEl) {
-      statusEl.textContent = connected ? 'Online' : 'Offline';
-      statusEl.className = `status-badge ${connected ? 'status-connected' : 'status-disconnected'}`;
+      statusEl.title = connected ? 'Online' : 'Offline';
+      statusEl.className = `status-dot ${connected ? 'status-connected' : 'status-disconnected'}`;
     }
     notifyListeners('connection', { connected });
   }

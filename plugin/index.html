@@ -11,6 +11,12 @@
   <!-- Login Section -->
   <section id="login-section" class="login-section">
     <div class="login-container">
+      <div class="login-logo">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="#6366f1"/>
+          <path d="M8 12h6v2H8v-2zm0 4h10v2H8v-2zm10-4h6v6h-6v-6zm-10 8h16v2H8v-2z" fill="#fff" opacity="0.9"/>
+        </svg>
+      </div>
       <h1 class="app-title">ScriptSync Pro</h1>
       <p class="app-subtitle">Script-to-timeline synchronization</p>
       <div id="login-form-container"></div>
@@ -19,46 +25,99 @@
 
   <!-- Main Application -->
   <section id="main-app" class="main-app hidden">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <h2 class="header-title">ScriptSync Pro</h2>
-        <span id="connection-status" class="status-badge status-disconnected">Offline</span>
+
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="top-bar-left">
+        <span class="top-bar-title">ScriptSync Pro</span>
+        <span id="connection-status" class="status-dot status-disconnected" title="Offline"></span>
       </div>
-      <div class="header-right">
-        <select id="project-selector" class="select-input">
+      <div class="top-bar-center">
+        <select id="project-selector" class="project-select">
           <option value="">Select Project...</option>
         </select>
-        <button id="btn-logout" class="btn btn-sm btn-secondary">Logout</button>
+      </div>
+      <div class="top-bar-right">
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 4.754a3.246 3.246 0 100 6.492 3.246 3.246 0 000-6.492zM5.754 8a2.246 2.246 0 114.492 0 2.246 2.246 0 01-4.492 0z"/><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 01-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 01-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 01.52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 011.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 011.255-.52l.292.16c1.64.892 3.434-.901 2.54-2.541l-.159-.292a.873.873 0 01.52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 01-.52-1.255l.16-.292c.892-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 01-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 002.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 001.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 00-1.115 2.693l.16.291c.415.764-.421 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 00-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 00-2.692-1.115l-.292.16c-.764.415-1.6-.421-1.184-1.185l.159-.291A1.873 1.873 0 001.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 003.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 002.692-1.115l.094-.319z"/></svg>
+        </button>
+        <button id="btn-sync-status" class="icon-btn" title="Sync Status">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 00-4.546 2.914.5.5 0 01-.908-.418A6 6 0 0114 8a.5.5 0 01-1 0 5 5 0 00-5-5z"/><path d="M8 13a5 5 0 004.546-2.914.5.5 0 01.908.418A6 6 0 012 8a.5.5 0 011 0 5 5 0 005 5z"/><path d="M6.5 2.5a.5.5 0 01.5-.5h2a.5.5 0 010 1H7.5V4a.5.5 0 01-1 0V2.5z"/><path d="M9.5 13.5a.5.5 0 01-.5.5H7a.5.5 0 010-1h1.5V12a.5.5 0 011 0v1.5z"/></svg>
+        </button>
+        <button id="btn-logout" class="icon-btn" title="Logout">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6 12.5a.5.5 0 000 1h3a.5.5 0 000-1H6zM6 2.5a.5.5 0 000 1h3a.5.5 0 000-1H6z"/><path d="M2 1a1 1 0 011-1h10a1 1 0 011 1v14a1 1 0 01-1 1H3a1 1 0 01-1-1V1zm1 0v14h10V1H3z"/><path d="M10.354 7.646a.5.5 0 010 .708l-2 2a.5.5 0 11-.708-.708L9.293 8 7.646 6.354a.5.5 0 11.708-.708l2 2z"/><path d="M4 8a.5.5 0 01.5-.5h5a.5.5 0 010 1h-5A.5.5 0 014 8z"/></svg>
+        </button>
       </div>
     </header>
 
-    <!-- Tab Navigation -->
-    <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="screenplay">Screenplay</button>
-      <button class="tab-btn" data-tab="clips">Clips</button>
-      <button class="tab-btn" data-tab="mappings">Mappings</button>
-      <button class="tab-btn" data-tab="sync">Sync</button>
-      <button class="tab-btn" data-tab="settings">Settings</button>
-    </nav>
+    <!-- Main Split View -->
+    <div class="split-view">
 
-    <!-- Tab Content Areas -->
-    <div class="tab-content-wrapper">
-      <div id="tab-screenplay" class="tab-content active">
-        <div id="screenplay-panel-root"></div>
+      <!-- Left Panel: Screenplay -->
+      <div class="split-left" id="screenplay-section">
+        <div class="section-header">
+          <h3 class="section-title">Screenplay</h3>
+          <div class="section-actions">
+            <!-- Screenplay panel JS injects its own toolbar here -->
+          </div>
+        </div>
+        <div id="screenplay-panel-root" class="section-content"></div>
       </div>
-      <div id="tab-clips" class="tab-content">
-        <div id="clips-panel-root"></div>
+
+      <!-- Resize Handle -->
+      <div class="split-divider" id="split-divider"></div>
+
+      <!-- Right Panel: Matches / Metadata -->
+      <div class="split-right" id="matches-section">
+        <div class="section-header">
+          <h3 class="section-title">Matches</h3>
+          <div class="section-actions">
+            <!-- Filled dynamically on match/clip selection -->
+          </div>
+        </div>
+        <div class="section-content">
+          <!-- Empty state -->
+          <div id="matches-empty" class="empty-state">
+            <div class="empty-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/>
+                <line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/>
+                <line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/>
+                <line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/>
+                <line x1="17" y1="7" x2="22" y2="7"/>
+              </svg>
+            </div>
+            <p class="empty-text">Select a dialogue line to see matching clips</p>
+            <p class="empty-hint">Upload a screenplay and scan clips to get started</p>
+          </div>
+          <!-- Match results / metadata injected here -->
+          <div id="match-results" class="hidden"></div>
+          <div id="metadata-panel-root"></div>
+        </div>
       </div>
-      <div id="tab-mappings" class="tab-content">
-        <div id="playback-panel-root"></div>
-        <div id="metadata-panel-root"></div>
+    </div>
+
+    <!-- Bottom Panel (collapsible tabs) -->
+    <div class="bottom-panel" id="bottom-panel">
+      <div class="bottom-tabs">
+        <button class="bottom-tab active" data-panel="playback">Playback</button>
+        <button class="bottom-tab" data-panel="clips">Clips</button>
+        <button class="bottom-tab" data-panel="sync">Sync</button>
+        <div class="bottom-tabs-spacer"></div>
+        <button class="bottom-tab-toggle" id="btn-toggle-bottom" title="Collapse">
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor"><path d="M7.646 4.646a.5.5 0 01.708 0l6 6a.5.5 0 01-.708.708L8 5.707l-5.646 5.647a.5.5 0 01-.708-.708l6-6z"/></svg>
+        </button>
       </div>
-      <div id="tab-sync" class="tab-content">
-        <div id="sync-panel-root"></div>
-      </div>
-      <div id="tab-settings" class="tab-content">
-        <div id="settings-panel-root"></div>
+      <div class="bottom-content" id="bottom-content">
+        <div id="panel-playback" class="bottom-panel-content">
+          <div id="playback-panel-root"></div>
+        </div>
+        <div id="panel-clips" class="bottom-panel-content hidden">
+          <div id="clips-panel-root"></div>
+        </div>
+        <div id="panel-sync" class="bottom-panel-content hidden">
+          <div id="sync-panel-root"></div>
+        </div>
       </div>
     </div>
 
@@ -67,9 +126,27 @@
       <span id="status-message">Ready</span>
       <span id="helper-status" class="status-badge status-disconnected">Helper: Offline</span>
     </footer>
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" class="overlay hidden">
+      <div class="overlay-backdrop"></div>
+      <div class="overlay-panel">
+        <div class="overlay-header">
+          <h3>Settings</h3>
+          <button id="btn-close-settings" class="icon-btn" title="Close">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M4.646 4.646a.5.5 0 01.708 0L8 7.293l2.646-2.647a.5.5 0 01.708.708L8.707 8l2.647 2.646a.5.5 0 01-.708.708L8 8.707l-2.646 2.647a.5.5 0 01-.708-.708L7.293 8 4.646 5.354a.5.5 0 010-.708z"/></svg>
+          </button>
+        </div>
+        <div id="settings-panel-root" class="overlay-content"></div>
+      </div>
+    </div>
+
   </section>
 
-  <!-- Scripts -->
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts (in dependency order) -->
   <script src="src/utils/timecode.js"></script>
   <script src="src/utils/ffmpeg.js"></script>
   <script src="src/utils/whisper.js"></script>
@@ -88,6 +165,7 @@
   <script src="src/mapping/claudeMatch.js"></script>
   <script src="src/cloud/syncPanel.js"></script>
   <script src="src/ui/screenplay-panel.js"></script>
+  <script src="src/ui/matches-panel.js"></script>
   <script src="src/ui/playback-panel.js"></script>
   <script src="src/ui/metadata-panel.js"></script>
   <script src="src/ui/settings-panel.js"></script>
