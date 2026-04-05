@@ -10,25 +10,19 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // ---------------------------------------------------------------------------
-// Multer config — memory storage, 20 MB limit, allowed extensions
+// Multer config — memory storage, 50 MB limit for PDFs
 // ---------------------------------------------------------------------------
-const ALLOWED_MIME_TYPES = [
-  'text/plain',
-  'application/pdf',
-  'text/xml',
-  'application/xml',
-  'application/octet-stream', // .fountain files often lack a specific MIME type
-];
-
-const ALLOWED_EXTENSIONS = /\.(fountain|txt|fdx|pdf)$/i;
+const ALLOWED_EXTENSIONS = /\.(fountain|txt|fdx|pdf|fadein|highland)$/i;
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB (PDFs can be large)
   fileFilter(_req, file, cb) {
     if (!ALLOWED_EXTENSIONS.test(file.originalname)) {
       return cb(
-        new Error('Only .fountain, .txt, .fdx, and .pdf files are accepted')
+        new Error(
+          'Accepted formats: .fountain, .txt, .fdx, .pdf, .fadein, .highland'
+        )
       );
     }
     cb(null, true);
@@ -36,33 +30,86 @@ const upload = multer({
 });
 
 // ---------------------------------------------------------------------------
-// Helpers
+// File-to-text extraction
 // ---------------------------------------------------------------------------
 
 /**
- * Extract plain text from a Final Draft XML (.fdx) buffer.
- * Performs a lightweight parse: pulls <Text> content from <Paragraph> elements.
+ * Extract text from a PDF buffer using pdf-parse.
+ */
+async function extractTextFromPdf(buffer) {
+  try {
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(buffer, {
+      // Preserve page breaks for better screenplay structure detection
+      pagerender: null,
+    });
+    return data.text || '';
+  } catch (err) {
+    console.error('[Screenplay] PDF parse error:', err.message);
+    // Fallback: try raw text extraction
+    return buffer
+      .toString('utf-8')
+      .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
+      .replace(/ {2,}/g, ' ')
+      .trim();
+  }
+}
+
+/**
+ * Extract text from Final Draft XML (.fdx).
+ * Handles both FDX 2.x and 3.x format with paragraph types.
  */
 function extractTextFromFdx(buffer) {
   const xml = buffer.toString('utf-8');
   const lines = [];
 
-  // Match each <Paragraph ...> ... </Paragraph> block
-  const paragraphRegex = /<Paragraph[^>]*>([\s\S]*?)<\/Paragraph>/gi;
+  // Match each <Paragraph Type="..."> ... </Paragraph> block
+  const paragraphRegex = /<Paragraph[^>]*?(?:Type="([^"]*)")?[^>]*>([\s\S]*?)<\/Paragraph>/gi;
   let paraMatch;
+
   while ((paraMatch = paragraphRegex.exec(xml)) !== null) {
-    const inner = paraMatch[1];
+    const paraType = (paraMatch[1] || '').toLowerCase();
+    const inner = paraMatch[2];
 
     // Collect all <Text> content within this paragraph
     const textRegex = /<Text[^>]*>([\s\S]*?)<\/Text>/gi;
     const parts = [];
     let textMatch;
     while ((textMatch = textRegex.exec(inner)) !== null) {
-      parts.push(textMatch[1].replace(/<[^>]*>/g, '').trim());
+      const clean = textMatch[1].replace(/<[^>]*>/g, '').trim();
+      if (clean) parts.push(clean);
     }
 
-    if (parts.length > 0) {
-      lines.push(parts.join(' '));
+    if (parts.length === 0) continue;
+    const text = parts.join(' ');
+
+    // Convert FDX paragraph types to Fountain-like formatting
+    // so Claude can parse the structure correctly
+    switch (paraType) {
+      case 'scene heading':
+        lines.push('');
+        lines.push(text.toUpperCase());
+        break;
+      case 'action':
+        lines.push('');
+        lines.push(text);
+        break;
+      case 'character':
+        lines.push('');
+        lines.push(text.toUpperCase());
+        break;
+      case 'dialogue':
+        lines.push(text);
+        break;
+      case 'parenthetical':
+        lines.push(`(${text.replace(/^\(|\)$/g, '')})`);
+        break;
+      case 'transition':
+        lines.push('');
+        lines.push(`> ${text}`);
+        break;
+      default:
+        lines.push(text);
     }
   }
 
@@ -70,48 +117,25 @@ function extractTextFromFdx(buffer) {
 }
 
 /**
- * Attempt basic text extraction from a PDF buffer.
- * Real PDF parsing requires a dedicated library (pdf-parse, pdfjs-dist, etc.).
- * This is a best-effort extraction of text-like content for simple PDFs.
+ * Extract text from Highland (.highland) files.
+ * Highland files are zip archives containing a Fountain document.
  */
-function extractTextFromPdf(buffer) {
-  // Try to pull readable ASCII/UTF-8 strings from the PDF binary.
-  // This will NOT work for image-based or encrypted PDFs.
-  const raw = buffer.toString('latin1');
-  const textChunks = [];
-
-  // Look for text between BT (begin text) and ET (end text) operators
-  const btEtRegex = /BT\s([\s\S]*?)ET/g;
-  let match;
-  while ((match = btEtRegex.exec(raw)) !== null) {
-    const block = match[1];
-    // Extract strings inside parentheses (Tj/TJ string operands)
-    const strRegex = /\(([^)]*)\)/g;
-    let strMatch;
-    while ((strMatch = strRegex.exec(block)) !== null) {
-      const text = strMatch[1].trim();
-      if (text.length > 0) {
-        textChunks.push(text);
-      }
-    }
+function extractTextFromHighland(buffer) {
+  // Highland format is essentially Fountain wrapped in a zip
+  // Try to read as plain text first (Highland 2 uses plain Fountain)
+  const text = buffer.toString('utf-8');
+  if (text.includes('INT.') || text.includes('EXT.') || text.includes('FADE IN')) {
+    return text;
   }
-
-  if (textChunks.length === 0) {
-    // Fallback: return the raw buffer as UTF-8 with non-printable chars stripped
-    return buffer
-      .toString('utf-8')
-      .replace(/[^\x20-\x7E\n\r\t]/g, ' ')
-      .replace(/ {2,}/g, ' ')
-      .trim();
-  }
-
-  return textChunks.join('\n');
+  // If it looks like binary/zip, we can't parse without unzip
+  console.warn('[Screenplay] Highland zip format not fully supported, treating as plain text');
+  return text.replace(/[^\x20-\x7E\n\r\t]/g, '').trim();
 }
 
 /**
- * Convert an uploaded file buffer to plain text based on its extension.
+ * Convert uploaded file buffer to plain text based on extension.
  */
-function fileToText(buffer, originalname) {
+async function fileToText(buffer, originalname) {
   const ext = originalname.toLowerCase().split('.').pop();
 
   switch (ext) {
@@ -123,7 +147,11 @@ function fileToText(buffer, originalname) {
       return extractTextFromFdx(buffer);
 
     case 'pdf':
-      return extractTextFromPdf(buffer);
+      return await extractTextFromPdf(buffer);
+
+    case 'highland':
+    case 'fadein':
+      return extractTextFromHighland(buffer);
 
     default:
       return buffer.toString('utf-8');
@@ -131,10 +159,10 @@ function fileToText(buffer, originalname) {
 }
 
 // ---------------------------------------------------------------------------
-// Routes (mounted at /projects in main app)
+// Routes
 // ---------------------------------------------------------------------------
 
-// POST /:id/screenplay — Upload and parse a screenplay file
+// POST /projects/:id/screenplay — Upload and parse a screenplay file
 router.post(
   '/projects/:id/screenplay',
   authenticate,
@@ -147,56 +175,81 @@ router.post(
       }
 
       const projectId = req.params.id;
-      const rawText = fileToText(req.file.buffer, req.file.originalname);
+      const rawText = await fileToText(req.file.buffer, req.file.originalname);
 
-      if (!rawText || rawText.trim().length === 0) {
-        return res
-          .status(400)
-          .json({ error: 'Could not extract text from the uploaded file' });
+      if (!rawText || rawText.trim().length < 10) {
+        return res.status(400).json({
+          error:
+            'Could not extract meaningful text from the file. For PDFs, make sure the file contains selectable text (not scanned images).',
+        });
       }
 
-      // Parse with Claude
-      const parsedJSON = await parseScreenplay(rawText);
+      // Parse with Claude AI
+      let parsedJSON = null;
+      try {
+        parsedJSON = await parseScreenplay(rawText);
+      } catch (parseErr) {
+        console.error('[Screenplay] Claude parse failed:', parseErr.message);
+        // Still save the raw text even if AI parsing fails
+        // User can retry parsing later
+      }
 
-      // Upsert screenplay record for this project
-      const screenplay = await prisma.screenplay.upsert({
+      // Check if a screenplay already exists for this project
+      const existing = await prisma.screenplay.findFirst({
         where: { projectId },
-        update: {
-          filename: req.file.originalname,
-          rawText,
-          parsedJSON,
-          uploadedBy: req.user.id,
-          updatedAt: new Date(),
-        },
-        create: {
-          projectId,
-          filename: req.file.originalname,
-          rawText,
-          parsedJSON,
-          uploadedBy: req.user.id,
-        },
+        orderBy: { uploadedAt: 'desc' },
       });
 
-      // Emit real-time update to project room
+      let screenplay;
+      if (existing) {
+        screenplay = await prisma.screenplay.update({
+          where: { id: existing.id },
+          data: {
+            filename: req.file.originalname,
+            rawText,
+            parsedJSON,
+            uploadedBy: req.user.id,
+          },
+        });
+      } else {
+        screenplay = await prisma.screenplay.create({
+          data: {
+            projectId,
+            filename: req.file.originalname,
+            rawText,
+            parsedJSON,
+            uploadedBy: req.user.id,
+          },
+        });
+      }
+
+      // Emit real-time update
       const io = req.app.get('io');
       if (io) {
         emitToProject(io, projectId, 'screenplay:parsed', {
           screenplayId: screenplay.id,
-          title: parsedJSON.title,
-          sceneCount: parsedJSON.scenes?.length || 0,
+          filename: screenplay.filename,
+          title: parsedJSON?.title || null,
+          sceneCount: parsedJSON?.scenes?.length || 0,
           uploadedBy: { id: req.user.id, name: req.user.name },
         });
       }
 
-      res.status(201).json(screenplay);
+      res.status(201).json({
+        id: screenplay.id,
+        projectId: screenplay.projectId,
+        filename: screenplay.filename,
+        parsedJSON: screenplay.parsedJSON,
+        uploadedAt: screenplay.uploadedAt,
+        parseStatus: parsedJSON ? 'success' : 'failed',
+      });
     } catch (err) {
-      // Handle multer errors (file size, type)
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res
           .status(413)
-          .json({ error: 'File too large. Maximum size is 20 MB.' });
+          .json({ error: 'File too large. Maximum size is 50 MB.' });
       }
-      if (err.message && err.message.includes('Only .fountain')) {
+      if (err.message && err.message.includes('Accepted formats')) {
         return res.status(400).json({ error: err.message });
       }
       next(err);
@@ -204,7 +257,7 @@ router.post(
   }
 );
 
-// GET /:id/screenplay — Get the latest parsed screenplay for a project
+// GET /projects/:id/screenplay — Get the latest screenplay for a project
 router.get(
   '/projects/:id/screenplay',
   authenticate,
@@ -218,6 +271,7 @@ router.get(
           id: true,
           projectId: true,
           filename: true,
+          rawText: true,
           parsedJSON: true,
           uploadedBy: true,
           uploadedAt: true,

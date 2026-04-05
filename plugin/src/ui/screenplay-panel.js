@@ -33,7 +33,7 @@ const ScreenplayPanel = (() => {
           <div class="empty-state">
             <div class="empty-state-icon">📜</div>
             <div class="empty-state-text">No screenplay loaded</div>
-            <div class="empty-state-hint">Upload a .fountain file or load from cloud</div>
+            <div class="empty-state-hint">Upload a .fountain, .pdf, .fdx, or .txt file</div>
           </div>
         </div>
       </div>
@@ -52,22 +52,58 @@ const ScreenplayPanel = (() => {
       const uxpStorage = require('uxp').storage;
       const fs = uxpStorage.localFileSystem;
       const file = await fs.getFileForOpening({
-        types: ['fountain', 'txt', 'json']
+        types: ['fountain', 'txt', 'json', 'pdf', 'fdx']
       });
 
       if (!file) return;
 
+      const ext = (file.name || '').split('.').pop().toLowerCase();
+      const project = TokenStore.getSelectedProject();
+
+      // For PDF and FDX files, upload to server for proper parsing
+      // (UXP can't run pdf-parse or XML parsers locally)
+      if (ext === 'pdf' || ext === 'fdx') {
+        if (!project) {
+          showToast('Select a project first to upload PDF/FDX files', 'warning');
+          return;
+        }
+
+        setStatus('Uploading screenplay to server for parsing...');
+        showToast('Uploading ' + file.name + '...', 'info');
+
+        // Read as binary for upload
+        const arrayBuffer = await file.read({ format: uxpStorage.formats.binary });
+        const blob = new Blob([arrayBuffer]);
+
+        const result = await CloudAPI.upload(
+          `/projects/${project.id || project._id}/screenplay`,
+          blob,
+          file.name
+        );
+
+        if (result && result.parsedJSON) {
+          _screenplay = ScreenplayImporter.parseJSON(result);
+          DataStore.setScreenplay(project.id || project._id, _screenplay.toJSON());
+          renderScreenplay();
+          setStatus('Screenplay parsed: ' + (_screenplay.title || file.name));
+          showToast('Screenplay loaded from ' + ext.toUpperCase(), 'success');
+        } else {
+          showToast('Server could not parse the file. Try a different format.', 'error');
+        }
+        return;
+      }
+
+      // For Fountain, TXT, JSON — parse locally
       const text = await file.read({ format: uxpStorage.formats.utf8 });
       _screenplay = ScreenplayImporter.parse(text);
 
-      // Store locally
-      const project = TokenStore.getSelectedProject();
       if (project) {
         DataStore.setScreenplay(project.id || project._id, _screenplay.toJSON());
       }
 
       renderScreenplay();
       setStatus('Screenplay loaded: ' + (_screenplay.title || file.name));
+      showToast('Screenplay loaded', 'success');
     } catch (e) {
       console.error('[ScreenplayPanel] Upload error:', e);
       showToast('Failed to load screenplay: ' + e.message, 'error');
