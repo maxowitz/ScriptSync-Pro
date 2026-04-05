@@ -1,42 +1,65 @@
+/**
+ * Email service using Resend HTTP API (or console fallback in dev).
+ * Set RESEND_API_KEY env var to enable real emails.
+ * Falls back to SMTP via nodemailer if SMTP_HOST is set instead.
+ */
+
 const nodemailer = require('nodemailer');
 
-let transporter = null;
+async function sendEmail({ to, subject, html, text }) {
+  const resendKey = process.env.RESEND_API_KEY || process.env.SMTP_PASS;
+  const from = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
-function getTransporter() {
-  if (transporter) return transporter;
-
-  if (process.env.NODE_ENV === 'development' && !process.env.SMTP_HOST) {
-    // In dev without SMTP config, log emails to console
-    transporter = {
-      sendMail: async (options) => {
-        console.log('=== DEV EMAIL ===');
-        console.log(`To: ${options.to}`);
-        console.log(`Subject: ${options.subject}`);
-        console.log(`Body: ${options.text || options.html}`);
-        console.log('=================');
-        return { messageId: 'dev-' + Date.now() };
+  // Try Resend HTTP API first (most reliable on cloud)
+  if (resendKey && resendKey.startsWith('re_')) {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${resendKey}`,
+        'Content-Type': 'application/json',
       },
-    };
-    return transporter;
+      body: JSON.stringify({ from, to, subject, html, text }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error('[Email] Resend API error:', res.status, body);
+      throw new Error(`Resend API error: ${res.status} ${body}`);
+    }
+
+    const data = await res.json();
+    console.log('[Email] Sent via Resend:', data.id, 'to:', to);
+    return data;
   }
 
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT, 10) || 587,
-    secure: parseInt(process.env.SMTP_PORT, 10) === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
+  // Fallback: SMTP via nodemailer
+  if (process.env.SMTP_HOST) {
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT, 10) || 587,
+      secure: parseInt(process.env.SMTP_PORT, 10) === 465,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
 
-  return transporter;
+    const result = await transporter.sendMail({ from, to, subject, html, text });
+    console.log('[Email] Sent via SMTP:', result.messageId, 'to:', to);
+    return result;
+  }
+
+  // Dev fallback: log to console
+  console.log('=== DEV EMAIL ===');
+  console.log(`To: ${to}`);
+  console.log(`Subject: ${subject}`);
+  console.log(`Body: ${text || html}`);
+  console.log('=================');
+  return { id: 'dev-' + Date.now() };
 }
 
 async function sendInviteEmail(toEmail, inviterName, projectName, role, acceptUrl) {
-  const transport = getTransporter();
-  await transport.sendMail({
-    from: process.env.FROM_EMAIL || 'noreply@scriptsyncpro.com',
+  await sendEmail({
     to: toEmail,
     subject: `You've been invited to "${projectName}" on ScriptSync Pro`,
     html: `
@@ -52,9 +75,7 @@ async function sendInviteEmail(toEmail, inviterName, projectName, role, acceptUr
 }
 
 async function sendResetEmail(toEmail, userName, resetUrl) {
-  const transport = getTransporter();
-  await transport.sendMail({
-    from: process.env.FROM_EMAIL || 'noreply@scriptsyncpro.com',
+  await sendEmail({
     to: toEmail,
     subject: 'Reset your ScriptSync Pro password',
     html: `
