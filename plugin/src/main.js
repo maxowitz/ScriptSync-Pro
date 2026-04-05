@@ -534,8 +534,22 @@
     const btn = document.getElementById('btn-logout');
     if (btn) {
       btn.addEventListener('click', () => {
-        LoginManager.handleLogout();
+        const token = TokenStore.getAccessToken();
+        if (token) {
+          // Logged in — log out
+          LoginManager.handleLogout();
+          btn.title = 'Log In';
+          showToast('Logged out', 'info');
+        } else {
+          // Not logged in — show login screen
+          LoginManager.showLogin();
+          LoginManager.render();
+        }
       });
+
+      // FIX: Update button tooltip based on auth state
+      const token = TokenStore.getAccessToken();
+      btn.title = token ? 'Log Out' : 'Log In';
     }
   }
 
