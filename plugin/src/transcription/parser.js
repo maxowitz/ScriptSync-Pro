@@ -32,7 +32,8 @@ const TranscriptionParser = (() => {
     // Format 2: Segments with word-level info
     if (jsonData.segments && Array.isArray(jsonData.segments)) {
       for (const seg of jsonData.segments) {
-        if (seg.words && Array.isArray(seg.words)) {
+        // FIX: Check words array has actual content (empty [] was passing the check)
+        if (seg.words && Array.isArray(seg.words) && seg.words.length > 0) {
           // Segment has word-level detail
           for (const w of seg.words) {
             words.push({
