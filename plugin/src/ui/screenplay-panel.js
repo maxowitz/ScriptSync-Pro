@@ -24,6 +24,7 @@ const ScreenplayPanel = (() => {
           <span class="panel-section-title">Screenplay</span>
           <div class="toolbar">
             <button id="btn-upload-screenplay" class="btn btn-sm btn-primary">Upload</button>
+            <button id="btn-clear-screenplay" class="btn btn-sm btn-danger" style="display:none">Clear</button>
             <button id="btn-load-cloud-screenplay" class="btn btn-sm btn-secondary">Load from Cloud</button>
             <div class="toolbar-spacer"></div>
             <button id="btn-auto-match-all" class="btn btn-sm btn-secondary" disabled>Auto-Match All</button>
@@ -40,6 +41,7 @@ const ScreenplayPanel = (() => {
     `;
 
     document.getElementById('btn-upload-screenplay').addEventListener('click', handleUpload);
+    document.getElementById('btn-clear-screenplay').addEventListener('click', handleClear);
     document.getElementById('btn-load-cloud-screenplay').addEventListener('click', handleLoadFromCloud);
     document.getElementById('btn-auto-match-all').addEventListener('click', handleAutoMatchAll);
 
@@ -155,6 +157,36 @@ const ScreenplayPanel = (() => {
     }
   }
 
+  // FIX: Clear/replace screenplay functionality
+  function handleClear() {
+    _screenplay = null;
+    _mappings = new Map();
+    _selectedLineId = null;
+
+    const content = document.getElementById('screenplay-content');
+    if (content) {
+      content.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state-icon">📜</div>
+          <div class="empty-state-text">No screenplay loaded</div>
+          <div class="empty-state-hint">Upload a .fountain, .pdf, .fdx, or .txt file</div>
+        </div>`;
+    }
+
+    const clearBtn = document.getElementById('btn-clear-screenplay');
+    if (clearBtn) clearBtn.style.display = 'none';
+
+    const autoBtn = document.getElementById('btn-auto-match-all');
+    if (autoBtn) autoBtn.disabled = true;
+
+    // Reset matches panel
+    document.dispatchEvent(new CustomEvent('screenplay:cleared'));
+    if (typeof MatchesPanel !== 'undefined') MatchesPanel.renderEmpty();
+
+    setStatus('No screenplay loaded');
+    showToast('Screenplay cleared', 'info');
+  }
+
   async function handleAutoMatchAll() {
     if (!_screenplay) return;
 
@@ -203,6 +235,10 @@ const ScreenplayPanel = (() => {
 
     const autoMatchBtn = document.getElementById('btn-auto-match-all');
     if (autoMatchBtn) autoMatchBtn.disabled = false;
+
+    // FIX: Show clear button when screenplay is loaded
+    const clearBtn = document.getElementById('btn-clear-screenplay');
+    if (clearBtn) clearBtn.style.display = 'inline-block';
 
     let html = '';
 
@@ -510,6 +546,7 @@ const ScreenplayPanel = (() => {
       }
       renderScreenplay();
     },
+    clear: handleClear,
     getSelectedLine() { return _selectedLineId; },
     getMappings() { return Array.from(_mappings.values()); },
     getScreenplay() { return _screenplay; }

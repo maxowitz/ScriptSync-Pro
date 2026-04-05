@@ -214,23 +214,31 @@
 
   async function scanLocalClips(projectId) {
     try {
-      setStatus('Scanning project for clips...');
+      setStatus('Scanning Premiere project for clips...');
       const clips = await ClipIndexer.scanProject();
       if (clips.length > 0) {
         DataStore.setClipIndex(projectId, clips);
-        setStatus(`Found ${clips.length} clips`);
+        setStatus(`Found ${clips.length} clips in Premiere`);
+        showToast(`Found ${clips.length} clips`, 'success');
         renderClipsTab(clips);
       } else {
-        setStatus('No clips found in project');
+        // FIX: Show actionable message instead of silent empty state
+        setStatus('No clips in Premiere bin. Use Import Folder or add media to your project.');
+        showToast('No clips found. Try "Import Folder" to load media files manually.', 'warning');
         renderClipsTab([]);
       }
     } catch (e) {
-      console.warn('[Main] Clip scan error:', e);
-      // Load from cache
+      // FIX: Surface the actual error instead of silently falling back
+      console.error('[Main] Clip scan error:', e);
+      setStatus('Premiere scan failed: ' + (e.message || 'Unknown error'));
+      showToast('Could not scan Premiere project. Use "Import Folder" instead.', 'warning');
+      // Still try loading from cache
       const cached = DataStore.getClipIndex(projectId);
       if (cached.length > 0) {
         renderClipsTab(cached);
         setStatus(`Loaded ${cached.length} cached clips`);
+      } else {
+        renderClipsTab([]);
       }
     }
   }
