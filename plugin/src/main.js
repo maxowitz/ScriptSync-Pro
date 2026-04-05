@@ -474,11 +474,19 @@
   }
 
   async function transcribeAllClips(clips) {
-    const untranscribed = clips.filter(c => !DataStore.getTranscription(c.id) && c.filePath);
+    // FIX: Only transcribe clips that have a valid, accessible file path
+    const untranscribed = clips.filter(c => {
+      if (DataStore.getTranscription(c.id)) return false; // Already transcribed
+      if (!c.filePath) return false; // No file path
+      // Check path looks real (not empty, not a Premiere internal reference)
+      if (c.filePath.length < 5) return false;
+      return true;
+    });
     if (untranscribed.length === 0) {
-      showToast('All clips already transcribed', 'info');
+      showToast('No clips available for transcription. Import media files first.', 'info');
       return;
     }
+    console.log(`[Main] Transcribing ${untranscribed.length} clips:`, untranscribed.map(c => c.name + ' -> ' + c.filePath));
 
     setStatus(`Transcribing ${untranscribed.length} clips...`);
     let successCount = 0;
