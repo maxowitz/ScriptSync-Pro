@@ -1,20 +1,23 @@
 FROM node:20-alpine
 
-# Install ffmpeg (for server-side audio extraction) and build tools (for bcrypt native addon)
+# Install ffmpeg and build tools for bcrypt native addon
 RUN apk add --no-cache ffmpeg python3 make g++
 
 WORKDIR /app
 
 # Install dependencies first (better layer caching)
-COPY package.json package-lock.json* ./
+COPY server/package.json server/package-lock.json* ./
 RUN npm install
 
 # Copy Prisma schema and generate client
-COPY prisma ./prisma
+COPY server/prisma ./prisma
 RUN npx prisma generate
 
 # Copy application source
-COPY . .
+COPY server/src ./src
+
+# Create storage directory
+RUN mkdir -p /app/storage
 
 EXPOSE 3000
 

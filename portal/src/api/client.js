@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// In dev, Vite proxy handles /api → localhost:3000
+// In prod, VITE_API_URL points to the server's public URL
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: API_BASE,
 });
 
 client.interceptors.request.use((config) => {
@@ -28,11 +32,11 @@ client.interceptors.response.use(
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) throw new Error('No refresh token');
 
-        const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+        const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refreshToken });
         localStorage.setItem('token', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
 
-        originalRequest.headers.Authorization = `Bearer ${data.token}`;
+        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return client(originalRequest);
       } catch (refreshError) {
         localStorage.removeItem('token');
