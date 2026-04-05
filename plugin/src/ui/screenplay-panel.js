@@ -71,15 +71,33 @@ const ScreenplayPanel = (() => {
         setStatus('Uploading screenplay to server for parsing...');
         showToast('Uploading ' + file.name + '...', 'info');
 
-        // Read as binary for upload
+        // Read file as binary ArrayBuffer
         const arrayBuffer = await file.read({ format: uxpStorage.formats.binary });
-        const blob = new Blob([arrayBuffer]);
 
-        const result = await CloudAPI.upload(
-          `/projects/${project.id || project._id}/screenplay`,
-          blob,
-          file.name
-        );
+        // Use raw binary upload endpoint (more reliable than FormData in UXP)
+        // Server endpoint: POST /projects/:id/screenplay/raw
+        // Sends raw binary body with X-Filename header
+        const result = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          const projectId = project.id || project._id;
+          const url = CloudAPI.getServerUrl() + `/projects/${projectId}/screenplay/raw`;
+          xhr.open('POST', url);
+          xhr.setRequestHeader('Authorization', `Bearer ${TokenStore.getAccessToken()}`);
+          xhr.setRequestHeader('X-Filename', file.name);
+          xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try { resolve(JSON.parse(xhr.responseText)); }
+              catch (e) { resolve({}); }
+            } else {
+              reject(new Error(`Upload Error ${xhr.status}: ${xhr.responseText}`));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Network error during upload'));
+
+          xhr.send(arrayBuffer);
+        });
 
         if (result && result.parsedJSON) {
           _screenplay = ScreenplayImporter.parseJSON(result);

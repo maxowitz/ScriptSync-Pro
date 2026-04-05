@@ -167,11 +167,29 @@ router.post(
   '/projects/:id/screenplay',
   authenticate,
   requireMinRole('EDITOR'),
-  upload.single('file'),
+  (req, res, next) => {
+    // Wrap multer in error handler — if multipart parsing fails,
+    // still let the request through so we can check for raw body
+    upload.single('file')(req, res, (err) => {
+      if (err && err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum size is 50 MB.' });
+      }
+      if (err && err.message && err.message.includes('Accepted formats')) {
+        return res.status(400).json({ error: err.message });
+      }
+      // For other multer errors, continue — req.file may just be undefined
+      next();
+    });
+  },
   async (req, res, next) => {
     try {
       if (!req.file) {
-        return res.status(400).json({ error: 'Screenplay file is required' });
+        // Multer didn't parse a file — could be UXP's non-standard FormData
+        // Check if there's a raw body we can use
+        console.warn('[Screenplay] No file from multer. Content-Type:', req.headers['content-type']);
+        return res.status(400).json({
+          error: 'Screenplay file is required. Ensure the file is sent as multipart form data with field name "file".',
+        });
       }
 
       const projectId = req.params.id;
@@ -252,6 +270,79 @@ router.post(
       if (err.message && err.message.includes('Accepted formats')) {
         return res.status(400).json({ error: err.message });
       }
+      next(err);
+    }
+  }
+);
+
+// POST /projects/:id/screenplay/raw — Alternative upload endpoint for UXP plugin
+// Accepts raw binary body with X-Filename header (no multipart FormData needed)
+router.post(
+  '/projects/:id/screenplay/raw',
+  authenticate,
+  requireMinRole('EDITOR'),
+  express.raw({ type: '*/*', limit: '50mb' }),
+  async (req, res, next) => {
+    try {
+      const filename = req.headers['x-filename'] || 'screenplay.txt';
+      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
+
+      if (!buffer || buffer.length < 10) {
+        return res.status(400).json({ error: 'File body is empty' });
+      }
+
+      const projectId = req.params.id;
+      const rawText = await fileToText(buffer, filename);
+
+      if (!rawText || rawText.trim().length < 10) {
+        return res.status(400).json({
+          error: 'Could not extract text from the file.',
+        });
+      }
+
+      let parsedJSON = null;
+      try {
+        parsedJSON = await parseScreenplay(rawText);
+      } catch (parseErr) {
+        console.error('[Screenplay] Claude parse failed:', parseErr.message);
+      }
+
+      const existing = await prisma.screenplay.findFirst({
+        where: { projectId },
+        orderBy: { uploadedAt: 'desc' },
+      });
+
+      let screenplay;
+      if (existing) {
+        screenplay = await prisma.screenplay.update({
+          where: { id: existing.id },
+          data: { filename, rawText, parsedJSON, uploadedBy: req.user.id },
+        });
+      } else {
+        screenplay = await prisma.screenplay.create({
+          data: { projectId, filename, rawText, parsedJSON, uploadedBy: req.user.id },
+        });
+      }
+
+      const io = req.app.get('io');
+      if (io) {
+        emitToProject(io, projectId, 'screenplay:parsed', {
+          screenplayId: screenplay.id,
+          filename,
+          title: parsedJSON?.title || null,
+          sceneCount: parsedJSON?.scenes?.length || 0,
+        });
+      }
+
+      res.status(201).json({
+        id: screenplay.id,
+        projectId: screenplay.projectId,
+        filename: screenplay.filename,
+        parsedJSON: screenplay.parsedJSON,
+        uploadedAt: screenplay.uploadedAt,
+        parseStatus: parsedJSON ? 'success' : 'failed',
+      });
+    } catch (err) {
       next(err);
     }
   }
