@@ -17,14 +17,18 @@ const TranscriptionEngine = (() => {
     }
   }
 
+  // FIX: UXP may not support AbortSignal.timeout() or AbortController.
+  // Use a simple race between fetch and a timeout promise.
   async function checkHelperAvailable() {
     try {
-      const res = await fetch(`${getHelperUrl()}/health`, {
-        method: 'GET',
-        signal: AbortSignal.timeout(3000)
-      });
+      const fetchPromise = fetch(`${getHelperUrl()}/health`, { method: 'GET' });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), 3000)
+      );
+      const res = await Promise.race([fetchPromise, timeoutPromise]);
       return res.ok;
     } catch (e) {
+      console.warn('[TranscriptionEngine] Health check failed:', e.message);
       return false;
     }
   }
