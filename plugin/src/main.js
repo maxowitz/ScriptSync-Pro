@@ -129,8 +129,15 @@
     if (!selector) return;
 
     try {
+      setStatus('Loading projects...');
       const data = await CloudAPI.getProjects();
       const projects = data.projects || data || [];
+
+      if (!Array.isArray(projects) || projects.length === 0) {
+        selector.innerHTML = '<option value="">No projects found</option>';
+        setStatus('No projects. Create one in the web portal.');
+        return;
+      }
 
       selector.innerHTML = '<option value="">Select Project...</option>';
       for (const p of projects) {
@@ -148,8 +155,28 @@
           onProjectSelected(saved);
         }
       }
+
+      // FIX: If only one project, auto-select it
+      if (projects.length === 1 && !selector.value) {
+        selector.value = projects[0].id || projects[0]._id;
+        const project = await CloudAPI.getProject(selector.value);
+        TokenStore.setSelectedProject(project);
+        onProjectSelected(project);
+      }
+
+      setStatus('Ready');
     } catch (e) {
       console.error('[Main] Failed to load projects:', e);
+      // FIX: Show the error to the user instead of silent failure
+      if (e.message && e.message.includes('401')) {
+        selector.innerHTML = '<option value="">Session expired - please log in</option>';
+        showToast('Session expired. Please log in again.', 'warning');
+        LoginManager.showLogin();
+      } else {
+        selector.innerHTML = '<option value="">Error loading projects</option>';
+        showToast('Could not load projects: ' + (e.message || 'Network error'), 'error');
+        setStatus('Failed to load projects');
+      }
     }
 
     selector.addEventListener('change', async () => {
