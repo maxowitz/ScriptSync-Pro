@@ -105,8 +105,12 @@ const ScreenplayPanel = (() => {
           renderScreenplay();
           setStatus('Screenplay parsed: ' + (_screenplay.title || file.name));
           showToast('Screenplay loaded from ' + ext.toUpperCase(), 'success');
+        } else if (result && result.id) {
+          // Server saved the file but AI parsing failed — try loading from cloud
+          showToast('File uploaded. AI parsing in progress, loading from cloud...', 'info');
+          await handleLoadFromCloud();
         } else {
-          showToast('Server could not parse the file. Try a different format.', 'error');
+          showToast('Could not parse the file. Check that it contains selectable text.', 'error');
         }
         return;
       }
