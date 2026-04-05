@@ -481,21 +481,37 @@
     }
 
     setStatus(`Transcribing ${untranscribed.length} clips...`);
+    let successCount = 0;
+    let failCount = 0;
 
     for (let i = 0; i < untranscribed.length; i++) {
       const clip = untranscribed[i];
       try {
         setStatus(`Transcribing ${i + 1}/${untranscribed.length}: ${clip.name}`);
-        const words = await TranscriptionEngine.transcribeAndParse(clip.filePath);
-        DataStore.setTranscription(clip.id, words);
+        console.log(`[Main] Transcribing clip: ${clip.name}, path: ${clip.filePath}`);
+        const result = await TranscriptionEngine.transcribeAndParse(clip.filePath);
+        console.log(`[Main] Transcription result for ${clip.name}:`, result ? 'OK' : 'NULL',
+          result?.segments ? `${result.segments.length} segments` : 'no segments');
+        if (result && (result.segments || result.words)) {
+          DataStore.setTranscription(clip.id, result);
+          successCount++;
+        } else {
+          console.warn(`[Main] Empty transcription for ${clip.name}`);
+          failCount++;
+        }
       } catch (e) {
         console.error(`[Main] Transcription error for ${clip.name}:`, e);
         showToast(`Failed to transcribe ${clip.name}: ${e.message}`, 'error');
+        failCount++;
       }
     }
 
     setStatus('Transcription batch complete');
-    showToast(`Transcribed ${untranscribed.length} clips`, 'success');
+    if (successCount > 0) {
+      showToast(`Transcribed ${successCount} clips` + (failCount > 0 ? ` (${failCount} failed)` : ''), 'success');
+    } else {
+      showToast(`All ${failCount} transcriptions failed. Check helper logs.`, 'error');
+    }
 
     // Re-render clips tab
     const project = TokenStore.getSelectedProject();
