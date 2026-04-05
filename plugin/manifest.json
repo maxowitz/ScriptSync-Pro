@@ -3,24 +3,36 @@
   "name": "ScriptSync Pro",
   "version": "1.0.0",
   "main": "index.html",
-  "host": {
-    "app": "premierepro",
-    "minVersion": "24.0.0"
-  },
   "manifestVersion": 5,
+  "host": [
+    {
+      "app": "premierepro",
+      "minVersion": "24.0.0"
+    }
+  ],
   "entrypoints": [
     {
       "type": "panel",
       "id": "scriptsync-main",
-      "label": { "default": "ScriptSync Pro" },
-      "minimumSize": { "width": 400, "height": 500 },
+      "label": {
+        "default": "ScriptSync Pro"
+      },
+      "minimumSize": { "width": 300, "height": 400 },
       "maximumSize": { "width": 1200, "height": 2000 },
       "preferredDockedSize": { "width": 500, "height": 700 },
       "preferredFloatingSize": { "width": 500, "height": 700 }
     }
   ],
   "requiredPermissions": {
-    "network": { "domains": ["*"] },
+    "network": {
+      "domains": [
+        "https://server-production-4168.up.railway.app",
+        "https://api.anthropic.com",
+        "http://localhost:3000",
+        "http://localhost:9876",
+        "wss://server-production-4168.up.railway.app"
+      ]
+    },
     "localFileSystem": "fullAccess",
     "clipboard": "readAndWrite"
   }

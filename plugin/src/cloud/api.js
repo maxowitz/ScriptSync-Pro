@@ -32,7 +32,7 @@ const CloudAPI = (() => {
       throw new Error('No refresh token available');
     }
 
-    const res = await fetch(`${getServerUrl()}/api/auth/refresh`, {
+    const res = await fetch(`${getServerUrl()}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken })
@@ -116,7 +116,7 @@ const CloudAPI = (() => {
     getServerUrl,
 
     async login(email, password) {
-      const res = await fetch(`${getServerUrl()}/api/auth/login`, {
+      const res = await fetch(`${getServerUrl()}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -140,7 +140,7 @@ const CloudAPI = (() => {
     },
 
     async register(name, email, password) {
-      const res = await fetch(`${getServerUrl()}/api/auth/register`, {
+      const res = await fetch(`${getServerUrl()}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, email, password })
@@ -159,7 +159,7 @@ const CloudAPI = (() => {
       TokenStore.clearTokens();
       // Fire-and-forget server logout
       if (token) {
-        fetch(`${getServerUrl()}/api/auth/logout`, {
+        fetch(`${getServerUrl()}/auth/logout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -244,47 +244,47 @@ const CloudAPI = (() => {
 
     // Projects
     getProjects() {
-      return this.get('/api/projects');
+      return this.get('/projects');
     },
 
     getProject(id) {
-      return this.get(`/api/projects/${id}`);
+      return this.get(`/projects/${id}`);
     },
 
     createProject(data) {
-      return this.post('/api/projects', data);
+      return this.post('/projects', data);
     },
 
     // Clips
     getClips(projectId) {
-      return this.get(`/api/projects/${projectId}/clips`);
+      return this.get(`/projects/${projectId}/clips`);
     },
 
     uploadClip(projectId, file, filename) {
-      return this.upload(`/api/projects/${projectId}/clips`, file, filename);
+      return this.upload(`/projects/${projectId}/clips`, file, filename);
     },
 
     // Screenplays
     getScreenplay(projectId) {
-      return this.get(`/api/projects/${projectId}/screenplay`);
+      return this.get(`/projects/${projectId}/screenplay`);
     },
 
     uploadScreenplay(projectId, body) {
-      return this.post(`/api/projects/${projectId}/screenplay`, body);
+      return this.post(`/projects/${projectId}/screenplay`, body);
     },
 
     // Mappings
     getMappings(projectId) {
-      return this.get(`/api/projects/${projectId}/mappings`);
+      return this.get(`/projects/${projectId}/mappings`);
     },
 
     saveMappings(projectId, mappings) {
-      return this.post(`/api/projects/${projectId}/mappings`, { mappings });
+      return this.post(`/projects/${projectId}/mappings`, { mappings });
     },
 
     // Transcription
     getTranscription(clipId) {
-      return this.get(`/api/clips/${clipId}/transcription`);
+      return this.get(`/clips/${clipId}/transcription`);
     }
   };
 })();
