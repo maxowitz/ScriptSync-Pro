@@ -28,12 +28,24 @@ router.get('/projects', authenticate, async (req, res, next) => {
       },
       include: {
         owner: { select: { id: true, email: true, name: true } },
-        _count: { select: { members: true } },
+        members: {
+          where: { userId: req.user.id },
+          select: { role: true },
+        },
+        _count: { select: { members: true, clips: true } },
       },
       orderBy: { updatedAt: 'desc' },
     });
 
-    res.json(projects);
+    // Add the user's role as a top-level field
+    const result = projects.map((p) => {
+      const membership = p.members[0];
+      const role = membership ? membership.role.toLowerCase() : (p.ownerId === req.user.id ? 'owner' : 'viewer');
+      const { members, ...rest } = p;
+      return { ...rest, role };
+    });
+
+    res.json(result);
   } catch (err) {
     next(err);
   }

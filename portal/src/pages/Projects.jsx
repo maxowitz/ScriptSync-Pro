@@ -248,11 +248,11 @@ export default function Projects() {
                     <div className="flex items-center gap-4 text-sm" style={{ color: 'var(--text-muted, #71717a)' }}>
                       <span className="flex items-center gap-1.5">
                         <Film className="w-4 h-4" />
-                        {project.clipCount ?? project.clips?.length ?? 0} clips
+                        {project._count?.clips ?? project.clipCount ?? 0} clips
                       </span>
                       <span className="flex items-center gap-1.5">
                         <Users className="w-4 h-4" />
-                        {project.memberCount ?? project.members?.length ?? 0}
+                        {project._count?.members ?? project.memberCount ?? 0}
                       </span>
                     </div>
                   </div>
