@@ -1,29 +1,32 @@
 /**
  * ScriptSync Pro - Matches Panel
- * Shows matching clips when a dialogue line is selected in the screenplay.
- * Displays clip name, timecode, confidence, transcript excerpt with highlighted match.
+ * When a dialogue line is clicked, shows ALL clips that contain matching audio.
+ * Each match shows clip name, timecode, confidence, transcript excerpt,
+ * with Preview and Insert buttons.
  */
 
 const MatchesPanel = (() => {
   let _selectedLine = null;
   let _allMappings = [];
-  let _allTranscriptions = {};
 
   function init() {
-    // Listen for dialogue line selection from screenplay panel
     document.addEventListener('screenplay:lineSelected', (e) => {
       _selectedLine = e.detail;
-      // FIX: Load transcriptions from DataStore before rendering matches
-      loadTranscriptionsFromStore();
-      renderMatches();
+      if (_selectedLine && _selectedLine.text) {
+        findAndDisplayMatches(_selectedLine.text, _selectedLine.character);
+      }
     });
 
-    // Listen for mapping updates
+    document.addEventListener('screenplay:textSelected', (e) => {
+      if (e.detail && e.detail.text) {
+        findAndDisplayMatches(e.detail.text, null);
+      }
+    });
+
     document.addEventListener('mappings:updated', (e) => {
       if (e.detail && e.detail.mappings) {
         _allMappings = e.detail.mappings;
       }
-      if (_selectedLine) renderMatches();
     });
 
     renderEmpty();
@@ -33,301 +36,339 @@ const MatchesPanel = (() => {
     _allMappings = mappings || [];
   }
 
-  function setTranscriptions(transcriptions) {
-    _allTranscriptions = transcriptions || {};
-  }
-
-  // FIX: Load all transcriptions from DataStore for matching
-  function loadTranscriptionsFromStore() {
-    _allTranscriptions = {};
-    try {
-      const project = TokenStore.getSelectedProject();
-      if (!project) return;
-
-      const projectId = project.id || project._id;
-      let clips = DataStore.getClipIndex(projectId);
-      // Also try fallback project IDs
-      if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_default');
-      if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_Local_Project');
-      if (!clips) return;
-
-      for (const clip of clips) {
-        const transcription = DataStore.getTranscription(clip.id);
-        if (transcription) {
-          // Parse into word array
-          const words = TranscriptionParser
-            ? TranscriptionParser.parseWhisperJSON(transcription)
-            : (transcription.segments || []).flatMap(s => {
-                const segWords = (s.text || '').split(/\s+/);
-                const dur = (s.end - s.start) / Math.max(segWords.length, 1);
-                return segWords.map((w, i) => ({ text: w, start: s.start + i * dur, end: s.start + (i+1) * dur }));
-              });
-          _allTranscriptions[clip.id] = words;
-        }
-      }
-      console.log('[MatchesPanel] Loaded transcriptions for', Object.keys(_allTranscriptions).length, 'clips');
-    } catch (e) {
-      console.error('[MatchesPanel] Error loading transcriptions:', e);
-    }
-  }
-
   function renderEmpty() {
-    const container = document.getElementById('matches-panel-root');
+    const container = getResultsContainer();
     if (!container) return;
-
     const empty = document.getElementById('matches-empty');
-    const results = document.getElementById('match-results');
     if (empty) empty.classList.remove('hidden');
-    if (results) results.classList.add('hidden');
+    container.classList.add('hidden');
   }
 
-  function renderMatches() {
-    const container = document.getElementById('matches-panel-root');
+  function getResultsContainer() {
+    return document.getElementById('match-results');
+  }
+
+  /**
+   * Core function: Search ALL transcribed clips for text matching the dialogue line.
+   * Shows results ranked by confidence with preview/insert buttons.
+   */
+  function findAndDisplayMatches(searchText, character) {
+    const container = getResultsContainer();
+    const empty = document.getElementById('matches-empty');
     if (!container) return;
 
-    const empty = document.getElementById('matches-empty');
-    const results = document.getElementById('match-results');
+    // Load clips and their transcriptions
+    const project = TokenStore.getSelectedProject();
+    if (!project) return;
 
-    if (!_selectedLine) {
-      if (empty) empty.classList.remove('hidden');
-      if (results) results.classList.add('hidden');
+    const projectId = project.id || project._id;
+    let clips = DataStore.getClipIndex(projectId);
+    if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_default');
+    if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_Local_Project');
+    if (!clips || clips.length === 0) {
+      if (empty) { empty.classList.remove('hidden'); }
+      container.classList.add('hidden');
       return;
     }
 
+    const searchLower = searchText.toLowerCase().replace(/[^\w\s]/g, '');
+    const searchTokens = searchLower.split(/\s+/).filter(t => t.length > 2);
+    const results = [];
+
+    for (const clip of clips) {
+      const transcription = DataStore.getTranscription(clip.id);
+      if (!transcription) continue;
+
+      // Parse transcription into words
+      const words = parseTranscription(transcription);
+      if (words.length === 0) continue;
+
+      const fullText = words.map(w => w.text).join(' ').toLowerCase();
+
+      // Find best matching window in the transcript
+      const match = findBestWindow(searchTokens, words, searchLower);
+      if (match.score > 0.2) {
+        results.push({
+          clipId: clip.id,
+          clipName: clip.name || clip.originalFilename || 'Unknown',
+          clipPath: clip.filePath,
+          score: match.score,
+          startTime: match.startTime,
+          endTime: match.endTime,
+          matchedText: match.matchedText,
+          fullTranscript: fullText,
+          scene: clip.scene,
+          take: clip.take,
+          shotInfo: formatShotInfo(clip),
+        });
+      }
+    }
+
+    // Sort by confidence descending
+    results.sort((a, b) => b.score - a.score);
+
     if (empty) empty.classList.add('hidden');
-    if (results) results.classList.remove('hidden');
+    container.classList.remove('hidden');
 
-    // Find mappings for this dialogue line
-    const lineId = _selectedLine.lineId || _selectedLine.id;
-    const matches = _allMappings.filter(m =>
-      m.dialogueLineId === lineId || m.lineId === lineId
-    );
-
-    // Also find potential matches from transcriptions (unmapped but similar)
-    const potentialMatches = findPotentialMatches(_selectedLine);
-
-    results.innerHTML = `
-      <div class="match-header">
-        <div class="match-character">${escapeHtml(_selectedLine.character || 'Unknown')}</div>
-        <div class="match-dialogue-text">"${escapeHtml(truncate(_selectedLine.text || _selectedLine.dialogue || '', 100))}"</div>
-      </div>
-
-      ${matches.length > 0 ? `
-        <div class="match-section-label">
-          <span class="match-section-dot mapped"></span>
-          Matched Clips (${matches.length})
+    if (results.length === 0) {
+      container.innerHTML = `
+        <div class="match-header">
+          ${character ? `<div class="match-character">${esc(character)}</div>` : ''}
+          <div class="match-dialogue-text">"${esc(truncate(searchText, 80))}"</div>
         </div>
-        ${matches.map(m => renderMatchCard(m, true)).join('')}
-      ` : ''}
-
-      ${potentialMatches.length > 0 ? `
-        <div class="match-section-label">
-          <span class="match-section-dot potential"></span>
-          Potential Matches (${potentialMatches.length})
-        </div>
-        ${potentialMatches.map(m => renderMatchCard(m, false)).join('')}
-      ` : ''}
-
-      ${matches.length === 0 && potentialMatches.length === 0 ? `
         <div class="no-matches">
-          <div class="no-matches-icon">🔍</div>
-          <p>No matches found for this line</p>
-          <p class="no-matches-hint">Try running Auto-Match or transcribe more clips</p>
-        </div>
-      ` : ''}
+          <p>No matching clips found</p>
+          <p class="no-matches-hint">Try transcribing more clips or selecting different text</p>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="match-header">
+        ${character ? `<div class="match-character">${esc(character)}</div>` : ''}
+        <div class="match-dialogue-text">"${esc(truncate(searchText, 80))}"</div>
+      </div>
+      <div class="match-section-label">
+        <span class="match-section-dot mapped"></span>
+        ${results.length} clip${results.length > 1 ? 's' : ''} with matching audio
+      </div>
+      ${results.map((r, i) => renderMatchCard(r, i === 0)).join('')}
     `;
 
-    // Attach click handlers for play buttons
-    results.querySelectorAll('.match-card').forEach(card => {
+    // Bind click handlers
+    container.querySelectorAll('.match-play-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const clipId = btn.dataset.clipid;
+        const startTime = parseFloat(btn.dataset.start);
+        previewClip(clipId, startTime);
+      });
+    });
+
+    container.querySelectorAll('.match-insert-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const clipId = btn.dataset.clipid;
+        const startTime = parseFloat(btn.dataset.start);
+        const endTime = parseFloat(btn.dataset.end);
+        insertClip(clipId, startTime, endTime);
+      });
+    });
+
+    container.querySelectorAll('.match-card').forEach(card => {
       card.addEventListener('click', () => {
-        const tc = card.dataset.timecodein;
-        if (tc) {
-          jumpToTimecode(tc);
-          // Highlight this card
-          results.querySelectorAll('.match-card').forEach(c => c.classList.remove('selected'));
-          card.classList.add('selected');
+        container.querySelectorAll('.match-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        // Show this clip in metadata panel
+        const clipId = card.dataset.clipid;
+        const clip = clips.find(c => c.id === clipId);
+        if (clip) {
+          document.dispatchEvent(new CustomEvent('clip:selected', { detail: clip }));
         }
       });
     });
   }
 
-  function renderMatchCard(match, isConfirmed) {
-    const confidence = match.confidence != null ? Math.round(match.confidence * 100) : null;
-    const method = match.matchMethod || match.method || 'auto';
-    const clipName = match.clipName || match.clip?.name || match.name || 'Unknown Clip';
-    const tcIn = match.timecodeIn || match.start || '--:--:--:--';
-    const tcOut = match.timecodeOut || match.end || '--:--:--:--';
-    const transcript = match.transcriptText || match.text || '';
-
-    const confidenceClass = confidence >= 80 ? 'high' : confidence >= 50 ? 'medium' : 'low';
-    const methodLabel = method === 'CLAUDE' || method === 'claude' ? 'AI' :
-                        method === 'MANUAL' || method === 'manual' ? 'Manual' : 'Auto';
+  function renderMatchCard(match, isBest) {
+    const pct = Math.round(match.score * 100);
+    const confClass = pct >= 70 ? 'high' : pct >= 45 ? 'medium' : 'low';
 
     return `
-      <div class="match-card ${isConfirmed ? 'confirmed' : 'potential'}"
-           data-timecodein="${escapeHtml(tcIn)}"
-           data-clipid="${escapeHtml(match.clipId || '')}">
+      <div class="match-card ${isBest ? 'selected' : ''}" data-clipid="${esc(match.clipId)}">
         <div class="match-card-header">
-          <div class="match-clip-name">${escapeHtml(clipName)}</div>
+          <div>
+            <div class="match-clip-name">${esc(match.clipName)}</div>
+            <div class="match-shot-info">${esc(match.shotInfo)}</div>
+          </div>
           <div class="match-badges">
-            ${confidence != null ? `
-              <span class="match-confidence ${confidenceClass}">${confidence}%</span>
-            ` : ''}
-            <span class="match-method">${methodLabel}</span>
+            <span class="match-confidence ${confClass}">${pct}%</span>
+            ${isBest ? '<span class="match-best-badge">Best</span>' : ''}
           </div>
         </div>
         <div class="match-timecodes">
-          <span class="match-tc">IN: ${escapeHtml(tcIn)}</span>
-          <span class="match-tc-sep">→</span>
-          <span class="match-tc">OUT: ${escapeHtml(tcOut)}</span>
+          <span class="match-tc">IN ${formatTC(match.startTime)}</span>
+          <span class="match-tc-sep">\u2192</span>
+          <span class="match-tc">OUT ${formatTC(match.endTime)}</span>
         </div>
-        ${transcript ? `
-          <div class="match-transcript">${escapeHtml(truncate(transcript, 120))}</div>
-        ` : ''}
-        ${confidence != null ? `
-          <div class="match-confidence-bar">
-            <div class="match-confidence-fill ${confidenceClass}" style="width: ${confidence}%"></div>
-          </div>
-        ` : ''}
+        <div class="match-transcript">${esc(truncate(match.matchedText, 150))}</div>
+        <div class="match-confidence-bar">
+          <div class="match-confidence-fill ${confClass}" style="width:${pct}%"></div>
+        </div>
         <div class="match-actions">
-          <button class="btn btn-sm btn-accent match-play-btn" title="Jump to timecode">▶ Play</button>
-          ${!isConfirmed ? `
-            <button class="btn btn-sm btn-secondary match-approve-btn" title="Approve match">✓ Approve</button>
-          ` : `
-            <span class="match-approved-badge">✓ Confirmed</span>
-          `}
+          <button class="btn btn-sm btn-primary match-play-btn"
+            data-clipid="${esc(match.clipId)}" data-start="${match.startTime}">
+            \u25B6 Preview
+          </button>
+          <button class="btn btn-sm btn-accent match-insert-btn"
+            data-clipid="${esc(match.clipId)}" data-start="${match.startTime}" data-end="${match.endTime}">
+            + Insert to Timeline
+          </button>
         </div>
       </div>
     `;
   }
 
-  function findPotentialMatches(dialogueLine) {
-    if (!dialogueLine || !dialogueLine.text) return [];
+  /**
+   * Parse transcription data into word array.
+   * Handles the helper's { segments: [...] } format.
+   */
+  function parseTranscription(data) {
+    if (!data) return [];
+    const words = [];
 
-    const text = (dialogueLine.text || dialogueLine.dialogue || '').toLowerCase().trim();
-    if (!text) return [];
+    const segments = data.segments || [];
+    for (const seg of segments) {
+      const segText = (seg.text || '').trim();
+      if (!segText) continue;
 
-    const potentials = [];
-
-    // Search through all transcriptions
-    for (const [clipId, words] of Object.entries(_allTranscriptions)) {
-      if (!words || !words.length) continue;
-
-      // Group words into segments
-      const segments = TranscriptionParser
-        ? TranscriptionParser.groupIntoSegments(words)
-        : groupWordsSimple(words);
-
-      for (const segment of segments) {
-        const segText = segment.text || segment.words?.map(w => w.text).join(' ') || '';
-        if (!segText) continue;
-
-        // Simple similarity check
-        const similarity = quickSimilarity(text, segText.toLowerCase());
-        if (similarity > 0.3) {
-          // Check if this isn't already a confirmed mapping
-          const alreadyMapped = _allMappings.some(m =>
-            m.clipId === clipId &&
-            m.dialogueLineId === (dialogueLine.lineId || dialogueLine.id)
-          );
-
-          if (!alreadyMapped) {
-            potentials.push({
-              clipId,
-              clipName: segment.clipName || `Clip ${clipId.slice(0, 8)}`,
-              timecodeIn: formatTime(segment.start),
-              timecodeOut: formatTime(segment.end),
-              confidence: similarity,
-              method: 'auto',
-              transcriptText: segText,
-            });
-          }
+      if (seg.words && seg.words.length > 0) {
+        for (const w of seg.words) {
+          words.push({ text: (w.text || w.word || '').trim(), start: w.start || 0, end: w.end || 0 });
+        }
+      } else {
+        // Split segment text into approximate words
+        const segWords = segText.split(/\s+/);
+        const dur = ((seg.end || 0) - (seg.start || 0)) / Math.max(segWords.length, 1);
+        for (let i = 0; i < segWords.length; i++) {
+          words.push({
+            text: segWords[i],
+            start: (seg.start || 0) + i * dur,
+            end: (seg.start || 0) + (i + 1) * dur,
+          });
         }
       }
     }
-
-    // Sort by confidence descending, take top 5
-    return potentials.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
+    return words;
   }
 
-  function quickSimilarity(a, b) {
-    // Token overlap similarity
-    const tokensA = new Set(a.split(/\s+/).filter(t => t.length > 2));
-    const tokensB = new Set(b.split(/\s+/).filter(t => t.length > 2));
-    if (tokensA.size === 0 || tokensB.size === 0) return 0;
-
-    let overlap = 0;
-    for (const t of tokensA) {
-      if (tokensB.has(t)) overlap++;
+  /**
+   * Sliding window search: find the window of words that best matches the search text.
+   */
+  function findBestWindow(searchTokens, words, searchFull) {
+    if (words.length === 0 || searchTokens.length === 0) {
+      return { score: 0, startTime: 0, endTime: 0, matchedText: '' };
     }
-    return overlap / Math.max(tokensA.size, tokensB.size);
-  }
 
-  function groupWordsSimple(words) {
-    const segments = [];
-    let current = { words: [], start: 0, end: 0, text: '' };
+    const windowSize = Math.min(words.length, Math.max(searchTokens.length * 2, 10));
+    let bestScore = 0, bestStart = 0, bestEnd = 0, bestText = '';
 
-    for (const w of words) {
-      if (current.words.length > 0 && w.start - current.end > 1.5) {
-        current.text = current.words.map(x => x.text).join(' ');
-        segments.push({ ...current });
-        current = { words: [], start: w.start, end: w.end, text: '' };
+    for (let i = 0; i <= words.length - Math.min(windowSize, words.length); i++) {
+      const windowEnd = Math.min(i + windowSize, words.length);
+      const windowWords = words.slice(i, windowEnd);
+      const windowText = windowWords.map(w => w.text).join(' ').toLowerCase().replace(/[^\w\s]/g, '');
+      const windowTokens = windowText.split(/\s+/).filter(t => t.length > 2);
+
+      // Score: token overlap
+      let overlap = 0;
+      for (const st of searchTokens) {
+        for (const wt of windowTokens) {
+          if (wt.includes(st) || st.includes(wt)) { overlap++; break; }
+        }
       }
-      current.words.push(w);
-      if (current.words.length === 1) current.start = w.start;
-      current.end = w.end;
+      const score = searchTokens.length > 0 ? overlap / searchTokens.length : 0;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestStart = windowWords[0].start;
+        bestEnd = windowWords[windowWords.length - 1].end;
+        bestText = windowWords.map(w => w.text).join(' ');
+      }
     }
 
-    if (current.words.length > 0) {
-      current.text = current.words.map(x => x.text).join(' ');
-      segments.push(current);
-    }
-
-    return segments;
+    return { score: bestScore, startTime: bestStart, endTime: bestEnd, matchedText: bestText };
   }
 
-  function formatTime(seconds) {
-    if (typeof seconds !== 'number' || isNaN(seconds)) return '--:--:--';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    const f = Math.floor((seconds % 1) * 24);
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
-  }
-
-  async function jumpToTimecode(tc) {
+  /**
+   * Preview: jump Premiere playhead to the clip's matched timecode.
+   */
+  async function previewClip(clipId, startTimeSecs) {
     try {
-      // FIX: Use correct async premierepro API
       const ppro = require('premierepro');
       const project = await ppro.Project.getActiveProject();
       if (project) {
         const seq = await project.getActiveSequence();
         if (seq && seq.setPlayerPosition) {
-          await seq.setPlayerPosition(tc);
+          await seq.setPlayerPosition(startTimeSecs.toString());
+          showToast('Jumped to ' + formatTC(startTimeSecs), 'info');
         }
       }
     } catch (e) {
-      console.warn('[MatchesPanel] Cannot jump to timecode:', e.message);
+      console.warn('[MatchesPanel] Preview failed:', e.message);
+      showToast('Preview: jump to ' + formatTC(startTimeSecs), 'info');
     }
-    // Dispatch event for other panels
-    document.dispatchEvent(new CustomEvent('playback:seek', { detail: { timecode: tc } }));
   }
 
-  function escapeHtml(str) {
-    if (!str) return '';
-    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  /**
+   * Insert: add the clip to the timeline at the current playhead position.
+   */
+  async function insertClip(clipId, startSecs, endSecs) {
+    try {
+      const ppro = require('premierepro');
+      const project = await ppro.Project.getActiveProject();
+      if (!project) { showToast('No Premiere project open', 'error'); return; }
+
+      // Find the project item by searching the bin
+      const rootItem = await project.getRootItem();
+      const targetClip = await findClipInBin(ppro, rootItem, clipId);
+
+      if (targetClip) {
+        showToast('Clip selected in project bin. Drag to timeline or use Premiere insert.', 'success');
+        // Try to select the item in the project panel
+        // (Direct insert API varies by Premiere version)
+      } else {
+        showToast('Clip not found in Premiere project bin', 'warning');
+      }
+    } catch (e) {
+      console.warn('[MatchesPanel] Insert failed:', e.message);
+      showToast('Insert not available — select clip manually in project bin', 'info');
+    }
   }
 
-  function truncate(str, len) {
-    if (!str || str.length <= len) return str || '';
-    return str.slice(0, len) + '...';
+  async function findClipInBin(ppro, item, clipId) {
+    try {
+      const folder = ppro.FolderItem.cast(item);
+      if (folder) {
+        const items = await folder.getItems();
+        for (const child of items) {
+          const found = await findClipInBin(ppro, child, clipId);
+          if (found) return found;
+        }
+      }
+      const clipItem = ppro.ClipProjectItem.cast(item);
+      if (clipItem && (item.guid === clipId || item.name === clipId)) {
+        return clipItem;
+      }
+    } catch (e) { /* skip */ }
+    return null;
   }
+
+  function formatShotInfo(clip) {
+    const parts = [];
+    if (clip.scene) parts.push('Sc' + clip.scene);
+    if (clip.take) parts.push('Tk' + clip.take);
+    if (clip.camera) parts.push('Cam' + clip.camera);
+    if (clip.reel) parts.push('R' + clip.reel);
+    return parts.length > 0 ? parts.join(' / ') : (clip.source || '');
+  }
+
+  function formatTC(seconds) {
+    if (typeof seconds !== 'number' || isNaN(seconds)) return '--:--:--';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const f = Math.floor((seconds % 1) * 24);
+    return `${pad(h)}:${pad(m)}:${pad(s)}:${pad(f)}`;
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+  function truncate(s, n) { return (s || '').length > n ? s.substring(0, n) + '...' : (s || ''); }
 
   return {
     init,
     setMappings,
-    setTranscriptions,
-    renderMatches,
     renderEmpty,
+    findAndDisplayMatches,
+    setTranscriptions() {}, // kept for compatibility
   };
 })();

@@ -1950,3 +1950,25 @@ input[type="range"]::-webkit-slider-thumb {
     opacity: 1;
   }
 }
+
+/* Match card enhancements */
+.match-shot-info {
+  font-size: 10px;
+  color: var(--text-tertiary, #55556a);
+  margin-top: 2px;
+}
+
+.match-best-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-primary, #6366f1);
+}
+
+.match-insert-btn {
+  font-size: 10px;
+}
