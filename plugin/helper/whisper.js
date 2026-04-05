@@ -2,7 +2,8 @@ const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
-const WHISPER_PATH = process.env.WHISPER_PATH || 'whisper';
+// FIX: Homebrew installs whisper.cpp as 'whisper-cli', not 'whisper'
+const WHISPER_PATH = process.env.WHISPER_PATH || 'whisper-cli';
 const WHISPER_MODELS_DIR = process.env.WHISPER_MODELS_DIR || path.join(__dirname, 'models');
 
 /**

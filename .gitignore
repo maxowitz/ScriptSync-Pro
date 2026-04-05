@@ -8,3 +8,4 @@ server/storage/
 *.log
 .vite/
 plugin/helper/models/
+models/*.bin
