@@ -19,20 +19,20 @@ FROM nginx:alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# SPA routing config
-RUN cat > /etc/nginx/conf.d/default.conf << 'NGINX'
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
+# Write nginx config template with $PORT placeholder
+RUN printf 'server {\n\
+    listen ${PORT};\n\
+    server_name _;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+}\n' > /etc/nginx/templates/default.conf.template
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-NGINX
+# nginx:alpine auto-processes templates in /etc/nginx/templates/
+# using envsubst, replacing ${PORT} at container start
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "envsubst '${PORT}' < /etc/nginx/templates/default.conf.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
