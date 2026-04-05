@@ -123,76 +123,117 @@
   }
 
   // ---- Project Selector ----
+  // FIX: Auto-detect Premiere project instead of requiring cloud project selection.
+  // The active Premiere project IS the project. Cloud is optional for collaboration.
 
   async function loadProjects() {
     const selector = document.getElementById('project-selector');
     if (!selector) return;
 
+    // Step 1: Try to detect the active Premiere Pro project
+    let premiereProject = null;
     try {
-      setStatus('Loading projects...');
+      const { app } = require('premiere');
+      if (app && app.project) {
+        const projName = app.project.name || 'Untitled Project';
+        const seqName = app.project.activeSequence
+          ? app.project.activeSequence.name
+          : null;
+        premiereProject = {
+          id: 'local_' + (projName.replace(/[^a-zA-Z0-9]/g, '_')),
+          name: seqName ? `${projName} — ${seqName}` : projName,
+          source: 'premiere',
+        };
+      }
+    } catch (e) {
+      console.warn('[Main] Premiere API not available:', e.message);
+    }
+
+    // Step 2: Build dropdown options
+    selector.innerHTML = '';
+
+    if (premiereProject) {
+      // Show the active Premiere project as primary option
+      const opt = document.createElement('option');
+      opt.value = premiereProject.id;
+      opt.textContent = premiereProject.name;
+      selector.appendChild(opt);
+    }
+
+    // Step 3: Also try loading cloud projects (for collaboration features)
+    try {
       const data = await CloudAPI.getProjects();
-      const projects = data.projects || data || [];
-
-      if (!Array.isArray(projects) || projects.length === 0) {
-        selector.innerHTML = '<option value="">No projects found</option>';
-        setStatus('No projects. Create one in the web portal.');
-        return;
-      }
-
-      selector.innerHTML = '<option value="">Select Project...</option>';
-      for (const p of projects) {
-        const opt = document.createElement('option');
-        opt.value = p.id || p._id;
-        opt.textContent = p.name || p.title || 'Untitled';
-        selector.appendChild(opt);
-      }
-
-      // Restore last selected project
-      const saved = TokenStore.getSelectedProject();
-      if (saved) {
-        selector.value = saved.id || saved._id || '';
-        if (selector.value) {
-          onProjectSelected(saved);
+      const cloudProjects = data.projects || data || [];
+      if (Array.isArray(cloudProjects) && cloudProjects.length > 0) {
+        if (premiereProject) {
+          // Add separator
+          const sep = document.createElement('option');
+          sep.disabled = true;
+          sep.textContent = '── Cloud Projects ──';
+          selector.appendChild(sep);
+        }
+        for (const p of cloudProjects) {
+          const opt = document.createElement('option');
+          opt.value = p.id || p._id;
+          opt.textContent = (p.name || p.title || 'Untitled') + ' (cloud)';
+          opt.dataset.source = 'cloud';
+          selector.appendChild(opt);
         }
       }
-
-      // FIX: If only one project, auto-select it
-      if (projects.length === 1 && !selector.value) {
-        selector.value = projects[0].id || projects[0]._id;
-        const project = await CloudAPI.getProject(selector.value);
-        TokenStore.setSelectedProject(project);
-        onProjectSelected(project);
-      }
-
-      setStatus('Ready');
     } catch (e) {
-      console.error('[Main] Failed to load projects:', e);
-      // FIX: Show the error to the user instead of silent failure
-      if (e.message && e.message.includes('401')) {
-        selector.innerHTML = '<option value="">Session expired - please log in</option>';
-        showToast('Session expired. Please log in again.', 'warning');
-        LoginManager.showLogin();
+      // Cloud not available — that's fine, local project still works
+      console.warn('[Main] Cloud projects unavailable:', e.message);
+    }
+
+    // Step 4: Auto-select
+    if (selector.options.length === 0) {
+      selector.innerHTML = '<option value="">No project detected</option>';
+      setStatus('Open a Premiere project or log in for cloud projects');
+      return;
+    }
+
+    // Auto-select the first option (Premiere project or cloud project)
+    const firstOption = selector.options[0];
+    if (firstOption && firstOption.value) {
+      selector.value = firstOption.value;
+
+      // Check if it's a cloud project or local
+      if (firstOption.dataset && firstOption.dataset.source === 'cloud') {
+        try {
+          const project = await CloudAPI.getProject(firstOption.value);
+          TokenStore.setSelectedProject(project);
+          onProjectSelected(project);
+        } catch (e) {
+          console.error('[Main] Failed to load cloud project:', e);
+        }
       } else {
-        selector.innerHTML = '<option value="">Error loading projects</option>';
-        showToast('Could not load projects: ' + (e.message || 'Network error'), 'error');
-        setStatus('Failed to load projects');
+        // Local Premiere project — use directly
+        TokenStore.setSelectedProject(premiereProject || { id: firstOption.value, name: firstOption.textContent });
+        onProjectSelected(premiereProject || { id: firstOption.value, name: firstOption.textContent });
       }
     }
 
+    // Handle manual dropdown change
     selector.addEventListener('change', async () => {
-      const projectId = selector.value;
-      if (!projectId) {
+      const selectedOpt = selector.options[selector.selectedIndex];
+      if (!selectedOpt || !selectedOpt.value) {
         TokenStore.setSelectedProject(null);
         return;
       }
 
-      try {
-        const project = await CloudAPI.getProject(projectId);
-        TokenStore.setSelectedProject(project);
-        onProjectSelected(project);
-      } catch (e) {
-        console.error('[Main] Failed to load project:', e);
-        showToast('Failed to load project', 'error');
+      if (selectedOpt.dataset && selectedOpt.dataset.source === 'cloud') {
+        try {
+          const project = await CloudAPI.getProject(selectedOpt.value);
+          TokenStore.setSelectedProject(project);
+          onProjectSelected(project);
+        } catch (e) {
+          showToast('Failed to load project', 'error');
+        }
+      } else {
+        // Local project selected
+        const localProj = { id: selectedOpt.value, name: selectedOpt.textContent };
+        TokenStore.setSelectedProject(localProj);
+        onProjectSelected(localProj);
       }
     });
   }
@@ -555,16 +596,11 @@
     initLogout();
     initPanels();
 
-    // Check for existing auth
-    if (TokenStore.hasValidAuth()) {
-      // Already authenticated
-      document.getElementById('login-section').classList.add('hidden');
-      document.getElementById('main-app').classList.remove('hidden');
-      initPostLogin();
-    } else {
-      // Show login
-      LoginManager.render();
-    }
+    // FIX: Always show main app — Premiere project works without cloud login.
+    // Cloud login is optional for collaboration features (sync, remote clips).
+    document.getElementById('login-section').classList.add('hidden');
+    document.getElementById('main-app').classList.remove('hidden');
+    initPostLogin();
 
     setStatus('Ready');
     console.log('[ScriptSync Pro] Initialized');
