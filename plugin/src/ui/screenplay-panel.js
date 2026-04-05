@@ -100,7 +100,8 @@ const ScreenplayPanel = (() => {
         });
 
         if (result && result.parsedJSON) {
-          _screenplay = ScreenplayImporter.parseJSON(result);
+          // FIX: Server returns {parsedJSON: {title, scenes}}, not {scenes} directly
+          _screenplay = ScreenplayImporter.parseJSON(result.parsedJSON);
           DataStore.setScreenplay(project.id || project._id, _screenplay.toJSON());
           renderScreenplay();
           setStatus('Screenplay parsed: ' + (_screenplay.title || file.name));
@@ -142,7 +143,9 @@ const ScreenplayPanel = (() => {
     try {
       setStatus('Loading screenplay from cloud...');
       const data = await CloudAPI.getScreenplay(project.id || project._id);
-      _screenplay = ScreenplayImporter.parseJSON(data);
+      // FIX: Server returns {parsedJSON: {title, scenes}}, extract the nested object
+      const screenplayData = data.parsedJSON || data;
+      _screenplay = ScreenplayImporter.parseJSON(screenplayData);
       DataStore.setScreenplay(project.id || project._id, _screenplay.toJSON());
       renderScreenplay();
       setStatus('Screenplay loaded from cloud');

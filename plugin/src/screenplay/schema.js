@@ -137,7 +137,9 @@ class ScreenplayData {
   }
 
   static fromJSON(data) {
-    const scenes = (data.scenes || []).map(s => Scene.fromJSON(s));
-    return new ScreenplayData({ ...data, scenes });
+    // FIX: Handle both direct {scenes} and wrapped {parsedJSON: {scenes}} formats
+    const source = data.parsedJSON || data;
+    const scenes = (source.scenes || []).map(s => Scene.fromJSON(s));
+    return new ScreenplayData({ ...source, scenes });
   }
 }
