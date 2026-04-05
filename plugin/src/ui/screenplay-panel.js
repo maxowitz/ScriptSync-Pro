@@ -65,8 +65,10 @@ const ScreenplayPanel = (() => {
       // For PDF and FDX files, upload to server for proper parsing
       // (UXP can't run pdf-parse or XML parsers locally)
       if (ext === 'pdf' || ext === 'fdx') {
-        if (!project) {
-          showToast('Select a project first to upload PDF/FDX files', 'warning');
+        // FIX: Use whatever project is available — local or cloud
+        const uploadProject = project || TokenStore.getSelectedProject();
+        if (!uploadProject || !uploadProject.id) {
+          showToast('No project context available. Try loading from cloud instead.', 'warning');
           return;
         }
 
@@ -81,7 +83,7 @@ const ScreenplayPanel = (() => {
         // Sends raw binary body with X-Filename header
         const result = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          const projectId = project.id || project._id;
+          const projectId = uploadProject.id || uploadProject._id;
           const url = CloudAPI.getServerUrl() + `/projects/${projectId}/screenplay/raw`;
           xhr.open('POST', url);
           xhr.setRequestHeader('Authorization', `Bearer ${TokenStore.getAccessToken()}`);
@@ -104,7 +106,7 @@ const ScreenplayPanel = (() => {
         if (result && result.parsedJSON) {
           // FIX: Server returns {parsedJSON: {title, scenes}}, not {scenes} directly
           _screenplay = ScreenplayImporter.parseJSON(result.parsedJSON);
-          DataStore.setScreenplay(project.id || project._id, _screenplay.toJSON());
+          DataStore.setScreenplay(uploadProject.id || uploadProject._id, _screenplay.toJSON());
           renderScreenplay();
           setStatus('Screenplay parsed: ' + (_screenplay.title || file.name));
           showToast('Screenplay loaded from ' + ext.toUpperCase(), 'success');

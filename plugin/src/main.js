@@ -130,10 +130,14 @@
     const selector = document.getElementById('project-selector');
     if (!selector) return;
 
-    // FIX: Use ClipIndexer.getProjectInfo() which uses the correct require("premierepro") API
+    // FIX: Detect Premiere project with timeout — the premierepro API can hang on startup
     let premiereProject = null;
     try {
-      const info = await ClipIndexer.getProjectInfo();
+      console.log('[Main] Attempting Premiere project detection...');
+      const info = await Promise.race([
+        ClipIndexer.getProjectInfo(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+      ]);
       if (info) {
         premiereProject = {
           id: 'local_' + (info.projectName.replace(/[^a-zA-Z0-9]/g, '_')),
@@ -146,6 +150,17 @@
       }
     } catch (e) {
       console.warn('[Main] Premiere project detection failed:', e.message);
+    }
+
+    // FIX: If ppro detection failed, still create a local project placeholder
+    // so the user can upload screenplays and work without cloud
+    if (!premiereProject) {
+      premiereProject = {
+        id: 'local_default',
+        name: 'Local Project',
+        source: 'local',
+      };
+      console.log('[Main] Using default local project');
     }
 
     // Step 2: Build dropdown options
