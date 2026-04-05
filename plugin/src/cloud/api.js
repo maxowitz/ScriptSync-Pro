@@ -4,7 +4,7 @@
  */
 
 const CloudAPI = (() => {
-  const DEFAULT_SERVER_URL = 'http://localhost:3000';
+  const DEFAULT_SERVER_URL = 'https://server-production-4168.up.railway.app';
   let _serverUrl = null;
   let _refreshing = null; // Promise for in-flight refresh
 
