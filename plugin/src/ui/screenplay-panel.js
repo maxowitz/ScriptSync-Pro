@@ -65,11 +65,41 @@ const ScreenplayPanel = (() => {
       // For PDF and FDX files, upload to server for proper parsing
       // (UXP can't run pdf-parse or XML parsers locally)
       if (ext === 'pdf' || ext === 'fdx') {
-        // FIX: Use whatever project is available — local or cloud
-        const uploadProject = project || TokenStore.getSelectedProject();
-        if (!uploadProject || !uploadProject.id) {
-          showToast('No project context available. Try loading from cloud instead.', 'warning');
-          return;
+        let uploadProject = project || TokenStore.getSelectedProject();
+
+        // FIX: If project is local-only, auto-create a cloud project.
+        // PDF/FDX parsing requires the cloud server (pdf-parse + Claude AI).
+        if (!uploadProject || !uploadProject.id || uploadProject.id.startsWith('local_')) {
+          // Check if we have a valid auth token
+          const token = TokenStore.getAccessToken();
+          if (!token) {
+            showToast('Please log in first (click the user icon in top-right). PDF parsing requires the cloud server.', 'warning');
+            LoginManager.showLogin();
+            return;
+          }
+
+          try {
+            setStatus('Setting up cloud project for PDF parsing...');
+            const projName = uploadProject ? uploadProject.name.replace(' (cloud)', '') : 'ScriptSync Project';
+            const created = await CloudAPI.createProject({ name: projName });
+            uploadProject = created;
+            TokenStore.setSelectedProject(uploadProject);
+
+            // Update the dropdown
+            const selector = document.getElementById('project-selector');
+            if (selector) {
+              const opt = document.createElement('option');
+              opt.value = uploadProject.id;
+              opt.textContent = uploadProject.name + ' (cloud)';
+              opt.dataset.source = 'cloud';
+              opt.selected = true;
+              selector.appendChild(opt);
+            }
+          } catch (createErr) {
+            console.error('[ScreenplayPanel] Cannot create cloud project:', createErr);
+            showToast('Could not connect to cloud. Log in first (user icon, top-right).', 'error');
+            return;
+          }
         }
 
         setStatus('Uploading screenplay to server for parsing...');
@@ -79,8 +109,6 @@ const ScreenplayPanel = (() => {
         const arrayBuffer = await file.read({ format: uxpStorage.formats.binary });
 
         // Use raw binary upload endpoint (more reliable than FormData in UXP)
-        // Server endpoint: POST /projects/:id/screenplay/raw
-        // Sends raw binary body with X-Filename header
         const result = await new Promise((resolve, reject) => {
           const xhr = new XMLHttpRequest();
           const projectId = uploadProject.id || uploadProject._id;
