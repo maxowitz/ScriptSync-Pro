@@ -156,8 +156,8 @@ model ScriptMapping {
   clip           Clip         @relation(fields: [clipId], references: [id], onDelete: Cascade)
   projectId      String
   project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  timecodeIn     String
-  timecodeOut    String
+  timecodeIn     String?
+  timecodeOut    String?
   confidence     Float?
   matchMethod    MatchMethod
   approvedBy     String?

@@ -133,12 +133,15 @@ const PlaybackPanel = (() => {
       const { app } = require('premiere');
       const seq = app.project.activeSequence;
       if (seq) {
-        // Toggle playback
-        app.enableQE();
-        const qeSeq = qe.project.getActiveSequence();
-        if (qeSeq) {
-          // QE API toggling
-          qeSeq.player.play();
+        // Toggle playback via QE API
+        try {
+          const qe = app.enableQE();
+          const qeSeq = qe.project.getActiveSequence();
+          if (qeSeq) {
+            qeSeq.player.play();
+          }
+        } catch (e) {
+          console.warn('[PlaybackPanel] QE API not available:', e.message);
         }
       }
     } catch (e) {

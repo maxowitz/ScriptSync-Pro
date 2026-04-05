@@ -71,7 +71,7 @@ const SyncPanelLogic = (() => {
   async function importRemoteClip(clip) {
     try {
       // Download from cloud
-      const response = await CloudAPI.download(`/api/clips/${clip.id || clip._id}/download`);
+      const response = await CloudAPI.download(`/clips/${clip.id || clip._id}/download`);
       const blob = await response.blob();
 
       // Save to local temp directory via UXP file system

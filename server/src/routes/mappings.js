@@ -137,6 +137,7 @@ router.post(
       const io = req.app.get('io');
       if (io) {
         io.to(`project:${projectId}`).emit('mapping:updated', mapping);
+        io.to(`project:${projectId}`).emit('clip:mapped', { mapping });
       }
 
       res.status(existing ? 200 : 201).json(mapping);
@@ -229,6 +230,9 @@ router.post(
           count: results.length,
           mappings: results,
         });
+        for (const result of results) {
+          io.to(`project:${projectId}`).emit('clip:mapped', { mapping: result });
+        }
       }
 
       res.json({ count: results.length, mappings: results });

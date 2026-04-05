@@ -156,13 +156,12 @@ router.post(
 // ---------------------------------------------------------------------------
 
 router.post(
-  '/projects/:id/clips/confirm-upload',
+  '/projects/:id/clips/:clipId/confirm-upload',
   authenticate,
   requireMinRole('UPLOADER'),
   async (req, res, next) => {
     try {
-      const { id: projectId } = req.params;
-      const { clipId } = req.body;
+      const { id: projectId, clipId } = req.params;
 
       if (!clipId) {
         return res.status(400).json({ error: 'clipId is required' });

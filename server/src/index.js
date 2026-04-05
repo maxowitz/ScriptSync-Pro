@@ -4,9 +4,12 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
 const { setupSocket } = require('./socket');
 const { errorHandler } = require('./middleware/errorHandler');
+const { authenticate } = require('./middleware/auth');
 
 const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
@@ -59,6 +62,21 @@ app.use('/', projectRoutes);
 app.use('/', clipRoutes);
 app.use('/', screenplayRoutes);
 app.use('/', mappingRoutes);
+
+// Local storage upload handler (used when R2 is not configured)
+const localStoragePath = process.env.LOCAL_STORAGE_PATH || './storage';
+app.put('/storage/*', authenticate, (req, res, next) => {
+  const key = req.params[0];
+  const fullPath = path.join(localStoragePath, key);
+  fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+  const writeStream = fs.createWriteStream(fullPath);
+  req.pipe(writeStream);
+  writeStream.on('finish', () => res.json({ ok: true }));
+  writeStream.on('error', (err) => next(err));
+});
+
+// Serve stored files
+app.use('/storage', express.static(localStoragePath));
 
 app.use(errorHandler);
 

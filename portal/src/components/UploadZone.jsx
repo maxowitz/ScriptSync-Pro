@@ -1,11 +1,9 @@
 import { useState, useCallback, useRef } from 'react';
-import { Upload, X, FileVideo, AlertCircle } from 'lucide-react';
+import { Upload, X, FileVideo, AlertCircle, CheckCircle } from 'lucide-react';
 import client from '../api/client';
 import ProgressBar from './ProgressBar';
-import * as tus from 'tus-js-client';
 
 const ACCEPTED_EXTENSIONS = ['.mxf', '.mov', '.mp4', '.r3d'];
-const ACCEPTED_MIME_TYPES = ['video/mxf', 'video/quicktime', 'video/mp4', 'video/x-red'];
 
 function isAcceptedFile(file) {
   const ext = '.' + file.name.split('.').pop().toLowerCase();
@@ -16,34 +14,57 @@ function FileUploadRow({ fileState, onRemove }) {
   const { file, progress, status, error } = fileState;
 
   return (
-    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-      <FileVideo className="w-5 h-5 text-indigo-500 shrink-0" />
+    <div
+      className="flex items-center gap-3 p-3.5 rounded-lg border transition-all duration-200"
+      style={{
+        background: 'var(--bg-secondary, #111113)',
+        borderColor: 'var(--border-subtle, #1f1f25)',
+      }}
+    >
+      <div
+        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: 'rgba(99, 102, 241, 0.1)' }}
+      >
+        <FileVideo className="w-4 h-4" style={{ color: 'var(--accent, #6366f1)' }} />
+      </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-sm font-medium text-gray-700 truncate">
+          <span
+            className="text-sm font-medium truncate"
+            style={{ color: 'var(--text-primary, #fafafa)' }}
+          >
             {file.name}
           </span>
-          <span className="text-xs text-gray-400 ml-2 shrink-0">
+          <span
+            className="text-xs ml-2 shrink-0"
+            style={{ color: 'var(--text-muted, #71717a)' }}
+          >
             {(file.size / (1024 * 1024)).toFixed(1)} MB
           </span>
         </div>
-        {status === 'uploading' && (
-          <ProgressBar percentage={progress} />
-        )}
+        {status === 'uploading' && <ProgressBar percentage={progress} active />}
         {status === 'complete' && (
-          <span className="text-xs text-green-600 font-medium">Upload complete</span>
+          <span className="inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--success, #22c55e)' }}>
+            <CheckCircle className="w-3 h-3" />
+            Upload complete
+          </span>
         )}
         {status === 'error' && (
-          <span className="text-xs text-red-600">{error}</span>
+          <span className="text-xs" style={{ color: '#f87171' }}>{error}</span>
         )}
         {status === 'pending' && (
-          <span className="text-xs text-gray-400">Waiting...</span>
+          <span className="text-xs" style={{ color: 'var(--text-muted, #71717a)' }}>
+            Waiting...
+          </span>
         )}
       </div>
       {(status === 'pending' || status === 'error') && (
         <button
           onClick={onRemove}
-          className="text-gray-400 hover:text-gray-600"
+          className="p-1 rounded transition-all duration-200"
+          style={{ color: 'var(--text-muted, #71717a)' }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text-primary, #fafafa)')}
+          onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-muted, #71717a)')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -59,27 +80,24 @@ export default function UploadZone({ projectId, onUploadComplete }) {
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
 
-  const addFiles = useCallback(
-    (newFiles) => {
-      const valid = Array.from(newFiles).filter(isAcceptedFile);
-      if (valid.length === 0) {
-        setError('No valid video files. Accepted: ' + ACCEPTED_EXTENSIONS.join(', '));
-        return;
-      }
-      setError(null);
+  const addFiles = useCallback((newFiles) => {
+    const valid = Array.from(newFiles).filter(isAcceptedFile);
+    if (valid.length === 0) {
+      setError('No valid video files. Accepted: ' + ACCEPTED_EXTENSIONS.join(', '));
+      return;
+    }
+    setError(null);
 
-      const entries = valid.map((file) => ({
-        id: `${file.name}-${Date.now()}-${Math.random()}`,
-        file,
-        progress: 0,
-        status: 'pending',
-        error: null,
-      }));
+    const entries = valid.map((file) => ({
+      id: `${file.name}-${Date.now()}-${Math.random()}`,
+      file,
+      progress: 0,
+      status: 'pending',
+      error: null,
+    }));
 
-      setFiles((prev) => [...prev, ...entries]);
-    },
-    []
-  );
+    setFiles((prev) => [...prev, ...entries]);
+  }, []);
 
   const handleDrop = useCallback(
     (e) => {
@@ -130,38 +148,41 @@ export default function UploadZone({ projectId, onUploadComplete }) {
           `/projects/${projectId}/clips/presign`,
           {
             filename: fileState.file.name,
-            size: fileState.file.size,
-            mimeType: fileState.file.type,
+            contentType: fileState.file.type || 'application/octet-stream',
           }
         );
 
-        // 2. Upload via tus
+        const uploadUrl = presignData.uploadUrl || presignData.url;
+        const clipId = presignData.clipId || presignData.clip?.id;
+
+        // 2. Upload via XMLHttpRequest PUT to presigned URL (for progress tracking)
         await new Promise((resolve, reject) => {
-          const upload = new tus.Upload(fileState.file, {
-            endpoint: presignData.uploadUrl || presignData.url,
-            metadata: {
-              filename: fileState.file.name,
-              filetype: fileState.file.type,
-              clipId: presignData.clipId || presignData.clip?.id,
-            },
-            chunkSize: 50 * 1024 * 1024,
-            retryDelays: [0, 1000, 3000, 5000],
-            onProgress(bytesUploaded, bytesTotal) {
-              const pct = Math.round((bytesUploaded / bytesTotal) * 100);
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', uploadUrl, true);
+          xhr.setRequestHeader('Content-Type', fileState.file.type || 'application/octet-stream');
+
+          xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable) {
+              const pct = Math.round((event.loaded / event.total) * 100);
               updateFile(fileState.id, { progress: pct });
-            },
-            onSuccess() {
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
               resolve();
-            },
-            onError(err) {
-              reject(err);
-            },
-          });
-          upload.start();
+            } else {
+              reject(new Error(`Upload failed with status ${xhr.status}`));
+            }
+          };
+
+          xhr.onerror = () => reject(new Error('Network error during upload'));
+          xhr.onabort = () => reject(new Error('Upload aborted'));
+
+          xhr.send(fileState.file);
         });
 
         // 3. Confirm upload
-        const clipId = presignData.clipId || presignData.clip?.id;
         const { data: confirmData } = await client.post(
           `/projects/${projectId}/clips/${clipId}/confirm-upload`
         );
@@ -192,24 +213,38 @@ export default function UploadZone({ projectId, onUploadComplete }) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onClick={handleBrowse}
-        className={`
-          border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
-          ${
-            dragOver
-              ? 'border-indigo-400 bg-indigo-50'
-              : 'border-gray-300 bg-white hover:border-indigo-300 hover:bg-gray-50'
+        className="border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition-all duration-200"
+        style={{
+          borderColor: dragOver ? 'var(--accent, #6366f1)' : 'var(--border-primary, #2a2a30)',
+          background: dragOver ? 'var(--bg-elevated, #1c1c21)' : 'var(--bg-secondary, #111113)',
+          transform: dragOver ? 'scale(1.01)' : 'scale(1)',
+        }}
+        onMouseEnter={(e) => {
+          if (!dragOver) {
+            e.currentTarget.style.borderColor = 'var(--accent, #6366f1)';
+            e.currentTarget.style.background = 'var(--bg-elevated, #1c1c21)';
           }
-        `}
+        }}
+        onMouseLeave={(e) => {
+          if (!dragOver) {
+            e.currentTarget.style.borderColor = 'var(--border-primary, #2a2a30)';
+            e.currentTarget.style.background = 'var(--bg-secondary, #111113)';
+          }
+        }}
       >
-        <Upload
-          className={`w-10 h-10 mx-auto mb-3 ${
-            dragOver ? 'text-indigo-500' : 'text-gray-400'
-          }`}
-        />
-        <p className="text-gray-700 font-medium">
+        <div
+          className="w-12 h-12 rounded-xl mx-auto mb-4 flex items-center justify-center"
+          style={{ background: dragOver ? 'rgba(99, 102, 241, 0.15)' : 'rgba(99, 102, 241, 0.08)' }}
+        >
+          <Upload
+            className="w-6 h-6"
+            style={{ color: dragOver ? 'var(--accent-hover, #818cf8)' : 'var(--accent, #6366f1)' }}
+          />
+        </div>
+        <p className="font-medium" style={{ color: 'var(--text-primary, #fafafa)' }}>
           Drop files here or click to browse
         </p>
-        <p className="text-gray-400 text-sm mt-1">
+        <p className="text-sm mt-1.5" style={{ color: 'var(--text-muted, #71717a)' }}>
           Accepts {ACCEPTED_EXTENSIONS.join(', ')} video files
         </p>
         <input
@@ -224,8 +259,15 @@ export default function UploadZone({ projectId, onUploadComplete }) {
 
       {/* Error */}
       {error && (
-        <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
+        <div
+          className="mt-4 p-4 rounded-xl flex items-center gap-3 text-sm border"
+          style={{
+            background: 'rgba(239, 68, 68, 0.08)',
+            borderColor: 'rgba(239, 68, 68, 0.2)',
+            color: '#fca5a5',
+          }}
+        >
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
           {error}
         </div>
       )}
@@ -242,11 +284,14 @@ export default function UploadZone({ projectId, onUploadComplete }) {
           ))}
 
           {pendingCount > 0 && (
-            <div className="flex justify-end mt-3">
+            <div className="flex justify-end mt-4">
               <button
                 onClick={startUpload}
                 disabled={uploading}
-                className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium flex items-center gap-2"
+                className="px-5 py-2.5 rounded-lg text-sm font-medium text-white transition-all duration-200 hover:shadow-lg hover:shadow-indigo-500/25 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center gap-2"
+                style={{
+                  background: 'linear-gradient(135deg, var(--accent, #6366f1), #818cf8)',
+                }}
               >
                 <Upload className="w-4 h-4" />
                 {uploading
