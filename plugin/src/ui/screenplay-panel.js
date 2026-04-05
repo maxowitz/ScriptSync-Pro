@@ -221,26 +221,47 @@ const ScreenplayPanel = (() => {
     if (!_screenplay) return;
 
     const project = TokenStore.getSelectedProject();
-    if (!project) return;
+    if (!project) {
+      showToast('No project selected', 'warning');
+      return;
+    }
 
     const projectId = project.id || project._id;
-    const clips = DataStore.getClipIndex(projectId);
+    let clips = DataStore.getClipIndex(projectId);
+
+    // FIX: Also try loading clips from the local_default project ID
+    // (clips may have been imported under one project ID and screenplay under another)
+    if (!clips || clips.length === 0) {
+      clips = DataStore.getClipIndex('local_default');
+    }
+    if (!clips || clips.length === 0) {
+      clips = DataStore.getClipIndex('local_Local_Project');
+    }
+
+    console.log(`[AutoMatch] Project: ${projectId}, Clips found: ${clips ? clips.length : 0}`);
 
     // We need transcription segments; gather from all transcribed clips
     const allSegments = [];
-    for (const clip of clips) {
+    let transcribedCount = 0;
+    for (const clip of (clips || [])) {
       const transcription = DataStore.getTranscription(clip.id);
       if (transcription) {
+        transcribedCount++;
+        console.log(`[AutoMatch] Clip ${clip.name} has transcription:`, typeof transcription);
         const words = TranscriptionParser.parseWhisperJSON(transcription);
+        console.log(`[AutoMatch] Parsed ${words.length} words from ${clip.name}`);
         const segments = TranscriptionParser.groupIntoSegments(words);
+        console.log(`[AutoMatch] Grouped into ${segments.length} segments from ${clip.name}`);
         segments.forEach((seg, idx) => {
           allSegments.push({ ...seg, clipId: clip.id, clipName: clip.name, originalIndex: idx });
         });
       }
     }
 
+    console.log(`[AutoMatch] Total: ${clips?.length || 0} clips, ${transcribedCount} transcribed, ${allSegments.length} segments`);
+
     if (allSegments.length === 0) {
-      showToast('No transcriptions available. Transcribe clips first.', 'warning');
+      showToast(`No transcriptions found. ${clips?.length || 0} clips, ${transcribedCount} with transcripts.`, 'warning');
       return;
     }
 
@@ -353,9 +374,20 @@ const ScreenplayPanel = (() => {
   function selectLine(lineId) {
     _selectedLineId = lineId;
     renderScreenplay();
-    document.dispatchEvent(new CustomEvent('screenplay:lineSelected', {
-      detail: { lineId, mapping: _mappings.get(lineId) }
-    }));
+
+    // FIX: Include full dialogue line data so MatchesPanel can search for it
+    let lineData = { lineId, mapping: _mappings.get(lineId) };
+    if (_screenplay) {
+      const dl = _screenplay.getDialogueLineById(lineId);
+      if (dl) {
+        lineData.text = dl.text || dl.dialogue || '';
+        lineData.character = dl.character || '';
+        lineData.id = lineId;
+      }
+    }
+
+    console.log('[ScreenplayPanel] Line selected:', lineData.character, lineData.text?.substring(0, 40));
+    document.dispatchEvent(new CustomEvent('screenplay:lineSelected', { detail: lineData }));
   }
 
   function showContextMenu(event, lineId) {

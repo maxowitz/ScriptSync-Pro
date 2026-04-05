@@ -13,6 +13,8 @@ const MatchesPanel = (() => {
     // Listen for dialogue line selection from screenplay panel
     document.addEventListener('screenplay:lineSelected', (e) => {
       _selectedLine = e.detail;
+      // FIX: Load transcriptions from DataStore before rendering matches
+      loadTranscriptionsFromStore();
       renderMatches();
     });
 
@@ -33,6 +35,40 @@ const MatchesPanel = (() => {
 
   function setTranscriptions(transcriptions) {
     _allTranscriptions = transcriptions || {};
+  }
+
+  // FIX: Load all transcriptions from DataStore for matching
+  function loadTranscriptionsFromStore() {
+    _allTranscriptions = {};
+    try {
+      const project = TokenStore.getSelectedProject();
+      if (!project) return;
+
+      const projectId = project.id || project._id;
+      let clips = DataStore.getClipIndex(projectId);
+      // Also try fallback project IDs
+      if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_default');
+      if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_Local_Project');
+      if (!clips) return;
+
+      for (const clip of clips) {
+        const transcription = DataStore.getTranscription(clip.id);
+        if (transcription) {
+          // Parse into word array
+          const words = TranscriptionParser
+            ? TranscriptionParser.parseWhisperJSON(transcription)
+            : (transcription.segments || []).flatMap(s => {
+                const segWords = (s.text || '').split(/\s+/);
+                const dur = (s.end - s.start) / Math.max(segWords.length, 1);
+                return segWords.map((w, i) => ({ text: w, start: s.start + i * dur, end: s.start + (i+1) * dur }));
+              });
+          _allTranscriptions[clip.id] = words;
+        }
+      }
+      console.log('[MatchesPanel] Loaded transcriptions for', Object.keys(_allTranscriptions).length, 'clips');
+    } catch (e) {
+      console.error('[MatchesPanel] Error loading transcriptions:', e);
+    }
   }
 
   function renderEmpty() {
