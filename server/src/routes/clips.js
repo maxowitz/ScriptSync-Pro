@@ -42,7 +42,7 @@ function parseShotTake(filename) {
     };
   }
 
-  // Pattern 2: Camera-roll clip ID, e.g. A001C002_220101_R1K4
+  // Pattern 2: Camera-roll clip ID, e.g. A002C011_240618_RPSM
   const arri = /^([A-Z]\d{3}C\d{3,4})/i;
   const m2 = baseName.match(arri);
   if (m2) {
@@ -53,7 +53,18 @@ function parseShotTake(filename) {
     };
   }
 
-  // Fallback
+  // FIX: Pattern 3: Production sound convention — 21A-003.WAV = Scene 21A, Take 003
+  const prodSound = /^(\d+[A-Z]?)[_\-](\d{2,3})$/i;
+  const m3 = baseName.match(prodSound);
+  if (m3) {
+    return {
+      name: baseName,
+      shotNumber: m3[1],  // scene/slate number (e.g., "21A")
+      takeNumber: m3[2],  // take number (e.g., "003")
+    };
+  }
+
+  // Fallback — never throws
   return {
     name: baseName,
     shotNumber: null,

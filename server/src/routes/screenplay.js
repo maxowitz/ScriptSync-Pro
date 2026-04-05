@@ -38,15 +38,14 @@ const upload = multer({
  */
 async function extractTextFromPdf(buffer) {
   try {
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(buffer, {
-      // Preserve page breaks for better screenplay structure detection
-      pagerender: null,
-    });
-    return data.text || '';
+    // FIX: pdf-parse v2 uses PDFParse class, not default function
+    const { PDFParse } = require('pdf-parse');
+    const parser = new PDFParse({ data: buffer });
+    const result = await parser.getText();
+    return result.text || '';
   } catch (err) {
     console.error('[Screenplay] PDF parse error:', err.message);
-    // Fallback: try raw text extraction
+    // Fallback: try raw text extraction for simple PDFs
     return buffer
       .toString('utf-8')
       .replace(/[^\x20-\x7E\n\r\t]/g, ' ')

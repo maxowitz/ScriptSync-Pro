@@ -1,4 +1,5 @@
-require('dotenv').config();
+// FIX: override=true needed because Claude Code sets empty ANTHROPIC_API_KEY in shell env
+require('dotenv').config({ override: true });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
