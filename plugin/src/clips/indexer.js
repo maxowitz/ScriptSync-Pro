@@ -1,195 +1,215 @@
 /**
  * ScriptSync Pro - Clip Indexer
- * Scans Premiere Pro project for clips using ppro DOM API.
+ * Scans Premiere Pro project for clips using the UXP premierepro API.
+ * FIX: Uses require("premierepro") — the correct module name for Premiere Pro 2024+.
+ * The old require("premiere") was incorrect and caused "Module not found" errors.
  */
 
 const ClipIndexer = (() => {
+
   /**
-   * Recursively scan a bin (folder) for clip items.
+   * Recursively scan a folder item for clip items.
+   * Uses the Premiere Pro 2024+ UXP API with ppro.FolderItem.cast() and ppro.ClipProjectItem.cast().
    */
-  function scanBin(bin, clips, parentPath = '') {
+  async function scanFolder(ppro, folderItem, clips, parentPath) {
     try {
-      const currentPath = parentPath ? `${parentPath}/${bin.name}` : bin.name;
+      const items = await folderItem.getItems();
+      if (!items || items.length === 0) return;
 
-      for (let i = 0; i < bin.children.numItems; i++) {
-        const item = bin.children[i];
+      for (const item of items) {
+        try {
+          // Check if it's a folder
+          const folder = ppro.FolderItem.cast(item);
+          if (folder) {
+            const folderPath = parentPath ? `${parentPath}/${item.name}` : item.name;
+            await scanFolder(ppro, folder, clips, folderPath);
+            continue;
+          }
 
-        if (item.type === 2) {
-          // Type 2 = bin (folder), recurse into it
-          scanBin(item, clips, currentPath);
-        } else if (item.type === 1) {
-          // Type 1 = clip/file item
-          try {
-            const clipInfo = {
-              id: item.nodeId || `clip_${i}_${Date.now()}`,
+          // Check if it's a clip
+          const clipItem = ppro.ClipProjectItem.cast(item);
+          if (clipItem) {
+            let mediaPath = '';
+            try {
+              mediaPath = await clipItem.getMediaFilePath();
+            } catch (e) { /* media path not available */ }
+
+            const parsed = ClipNameParser.parse(item.name || 'Untitled');
+
+            clips.push({
+              id: item.guid || `clip_${clips.length}_${Date.now()}`,
               name: item.name || 'Untitled',
-              binPath: currentPath,
-              filePath: '',
+              binPath: parentPath || 'Root',
+              filePath: mediaPath || '',
               duration: 0,
               inPoint: 0,
               outPoint: 0,
-              hasVideo: false,
-              hasAudio: false,
+              hasVideo: true,
+              hasAudio: true,
               frameRate: 24,
-              mediaType: 'unknown'
-            };
-
-            // Try to get file path
-            try {
-              if (item.getMediaPath) {
-                clipInfo.filePath = item.getMediaPath();
-              } else if (item.treePath) {
-                clipInfo.filePath = item.treePath;
-              }
-            } catch (e) { /* media path not available */ }
-
-            // Try to get duration
-            try {
-              if (item.getOutPoint) {
-                clipInfo.duration = item.getOutPoint().seconds || 0;
-              }
-            } catch (e) { /* duration not available */ }
-
-            // Try to get in/out points
-            try {
-              if (item.getInPoint) {
-                clipInfo.inPoint = item.getInPoint().seconds || 0;
-              }
-              if (item.getOutPoint) {
-                clipInfo.outPoint = item.getOutPoint().seconds || 0;
-              }
-            } catch (e) { /* points not available */ }
-
-            // Try to detect media type
-            try {
-              if (item.getFootageInterpretation) {
-                const interp = item.getFootageInterpretation();
-                clipInfo.frameRate = interp.frameRate || 24;
-              }
-            } catch (e) { /* interpretation not available */ }
-
-            // Check for video/audio streams
-            try {
-              clipInfo.hasVideo = item.hasVideo ? item.hasVideo() : true;
-              clipInfo.hasAudio = item.hasAudio ? item.hasAudio() : true;
-            } catch (e) {
-              // Default assumptions
-              clipInfo.hasVideo = true;
-              clipInfo.hasAudio = true;
-            }
-
-            // Parse shot/take info from filename
-            const parsed = ClipNameParser.parse(clipInfo.name);
-            clipInfo.scene = parsed.scene;
-            clipInfo.shot = parsed.shot;
-            clipInfo.take = parsed.take;
-            clipInfo.camera = parsed.camera;
-
-            clips.push(clipInfo);
-          } catch (itemErr) {
-            console.warn('[ClipIndexer] Error processing item:', item.name, itemErr);
+              mediaType: mediaPath ? guessMediaType(mediaPath) : 'unknown',
+              scene: parsed.scene,
+              shot: parsed.shot,
+              take: parsed.take,
+              camera: parsed.camera,
+              reel: parsed.reel,
+              source: 'bin',
+              status: 'pending',
+              originalFilename: item.name
+            });
           }
+        } catch (itemErr) {
+          console.warn('[ClipIndexer] Error processing item:', item.name, itemErr.message);
         }
       }
     } catch (e) {
-      console.error('[ClipIndexer] Error scanning bin:', bin.name, e);
+      console.error('[ClipIndexer] Error scanning folder:', e.message);
     }
+  }
+
+  function guessMediaType(filePath) {
+    if (!filePath) return 'unknown';
+    const ext = filePath.split('.').pop().toLowerCase();
+    if (['wav', 'aif', 'aiff', 'mp3', 'aac'].includes(ext)) return 'audio';
+    if (['mov', 'mp4', 'mxf', 'r3d', 'avi', 'braw'].includes(ext)) return 'video';
+    return 'unknown';
   }
 
   return {
     /**
      * Scan the entire Premiere Pro project for clips.
-     * Returns array of ClipInfo objects.
+     * Uses require("premierepro") — the correct module for Premiere Pro 2024+ UXP.
      */
     async scanProject() {
       const clips = [];
 
       try {
-        const { app } = require('premiere');
-        const project = app.project;
+        // FIX: Correct module name is "premierepro", not "premiere"
+        const ppro = require('premierepro');
+        console.log('[ClipIndexer] premierepro module loaded');
 
+        const project = await ppro.Project.getActiveProject();
         if (!project) {
-          console.warn('[ClipIndexer] No project open');
+          console.warn('[ClipIndexer] No active project');
           return clips;
         }
+        console.log('[ClipIndexer] Active project:', project.name);
 
-        const rootItem = project.rootItem;
-        if (!rootItem) {
-          console.warn('[ClipIndexer] No root item in project');
-          return clips;
-        }
-
-        scanBin(rootItem, clips);
-        console.log(`[ClipIndexer] Found ${clips.length} clips`);
-      } catch (e) {
-        console.warn('[ClipIndexer] Premiere Pro API not available:', e.message);
-        // Return empty array when not running inside Premiere
-      }
-
-      return clips;
-    },
-
-    /**
-     * Get the currently selected clip in Premiere Pro.
-     */
-    getSelectedClip() {
-      try {
-        const { app } = require('premiere');
-        const project = app.project;
-
-        if (!project) return null;
-
-        // Try to get selection from project panel
-        const selection = project.getInsertionBin ? project.getInsertionBin() : null;
-        return selection;
-      } catch (e) {
-        console.warn('[ClipIndexer] Cannot get selection:', e.message);
-        return null;
-      }
-    },
-
-    /**
-     * Get current sequence clips.
-     */
-    async getSequenceClips() {
-      const clips = [];
-
-      try {
-        const { app } = require('premiere');
-        const seq = app.project.activeSequence;
-
-        if (!seq) {
-          console.warn('[ClipIndexer] No active sequence');
-          return clips;
-        }
-
-        // Scan video tracks
-        for (let t = 0; t < seq.videoTracks.numTracks; t++) {
-          const track = seq.videoTracks[t];
-          for (let c = 0; c < track.clips.numItems; c++) {
-            const clip = track.clips[c];
-            try {
-              clips.push({
-                id: clip.nodeId || `seqclip_${t}_${c}`,
-                name: clip.name || clip.projectItem?.name || 'Untitled',
-                trackIndex: t,
-                clipIndex: c,
-                start: clip.start?.seconds || 0,
-                end: clip.end?.seconds || 0,
-                duration: (clip.end?.seconds || 0) - (clip.start?.seconds || 0),
-                inPoint: clip.inPoint?.seconds || 0,
-                outPoint: clip.outPoint?.seconds || 0
-              });
-            } catch (clipErr) {
-              console.warn('[ClipIndexer] Error reading sequence clip:', clipErr);
-            }
+        // Scan project bin
+        const rootItem = await project.getRootItem();
+        if (rootItem) {
+          const rootFolder = ppro.FolderItem.cast(rootItem);
+          if (rootFolder) {
+            await scanFolder(ppro, rootFolder, clips, '');
           }
         }
+
+        console.log(`[ClipIndexer] Found ${clips.length} clips in project bin`);
+
+        // Also scan active sequence tracks for clips with timeline info
+        try {
+          const sequence = await project.getActiveSequence();
+          if (sequence) {
+            console.log('[ClipIndexer] Active sequence:', sequence.name);
+
+            // Scan video tracks
+            const videoTrackCount = await sequence.getVideoTrackCount();
+            for (let t = 0; t < videoTrackCount; t++) {
+              try {
+                const track = await sequence.getVideoTrack(t);
+                const trackItems = track.getTrackItems(
+                  ppro.Constants.TrackItemType.CLIP,
+                  false
+                );
+                if (trackItems) {
+                  for (const trackItem of trackItems) {
+                    try {
+                      const projItem = await trackItem.getProjectItem();
+                      if (!projItem) continue;
+
+                      const clipProjItem = ppro.ClipProjectItem.cast(projItem);
+                      let mediaPath = '';
+                      if (clipProjItem) {
+                        try {
+                          mediaPath = await clipProjItem.getMediaFilePath();
+                        } catch (e) { /* ok */ }
+                      }
+
+                      const inPt = await trackItem.getInPoint();
+                      const outPt = await trackItem.getOutPoint();
+
+                      // Check if already in clips array from bin scan
+                      const existing = clips.find(c => c.name === projItem.name);
+                      if (existing) {
+                        // Update with sequence-specific info
+                        existing.inPoint = inPt ? inPt.seconds : 0;
+                        existing.outPoint = outPt ? outPt.seconds : 0;
+                        existing.duration = (existing.outPoint - existing.inPoint) || existing.duration;
+                        existing.source = 'sequence';
+                      } else {
+                        const parsed = ClipNameParser.parse(projItem.name || 'Untitled');
+                        clips.push({
+                          id: projItem.guid || `seqclip_${t}_${clips.length}`,
+                          name: projItem.name || 'Untitled',
+                          binPath: '',
+                          filePath: mediaPath || '',
+                          duration: outPt && inPt ? (outPt.seconds - inPt.seconds) : 0,
+                          inPoint: inPt ? inPt.seconds : 0,
+                          outPoint: outPt ? outPt.seconds : 0,
+                          hasVideo: true,
+                          hasAudio: true,
+                          frameRate: 24,
+                          mediaType: mediaPath ? guessMediaType(mediaPath) : 'unknown',
+                          scene: parsed.scene,
+                          shot: parsed.shot,
+                          take: parsed.take,
+                          camera: parsed.camera,
+                          reel: parsed.reel,
+                          source: 'sequence',
+                          status: 'pending',
+                          originalFilename: projItem.name
+                        });
+                      }
+                    } catch (clipErr) {
+                      console.warn('[ClipIndexer] Error reading track item:', clipErr.message);
+                    }
+                  }
+                }
+              } catch (trackErr) {
+                console.warn('[ClipIndexer] Error reading video track', t, ':', trackErr.message);
+              }
+            }
+          }
+        } catch (seqErr) {
+          console.warn('[ClipIndexer] Sequence scan failed:', seqErr.message);
+        }
+
       } catch (e) {
-        console.warn('[ClipIndexer] Premiere Pro sequence API not available:', e.message);
+        console.warn('[ClipIndexer] Premiere Pro API not available:', e.message);
       }
 
       return clips;
+    },
+
+    /**
+     * Get info about the active project and sequence.
+     */
+    async getProjectInfo() {
+      try {
+        const ppro = require('premierepro');
+        const project = await ppro.Project.getActiveProject();
+        if (!project) return null;
+
+        const sequence = await project.getActiveSequence();
+        return {
+          projectName: project.name || 'Untitled',
+          sequenceName: sequence ? sequence.name : null,
+          hasSequence: !!sequence,
+        };
+      } catch (e) {
+        console.warn('[ClipIndexer] Cannot get project info:', e.message);
+        return null;
+      }
     },
 
     /**
@@ -197,15 +217,12 @@ const ClipIndexer = (() => {
      */
     async importFile(filePath) {
       try {
-        const { app } = require('premiere');
-        const project = app.project;
+        const ppro = require('premierepro');
+        const project = await ppro.Project.getActiveProject();
+        if (!project) throw new Error('No project open');
 
-        if (!project) {
-          throw new Error('No project open');
-        }
-
-        const success = project.importFiles([filePath]);
-        return success;
+        await project.importFiles([filePath]);
+        return true;
       } catch (e) {
         console.error('[ClipIndexer] Import failed:', e);
         throw e;

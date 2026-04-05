@@ -259,16 +259,19 @@ const MatchesPanel = (() => {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
   }
 
-  function jumpToTimecode(tc) {
+  async function jumpToTimecode(tc) {
     try {
-      const app = require('premiere');
-      const seq = app.project.activeSequence;
-      if (seq) {
-        // Convert timecode string to ticks
-        seq.setPlayerPosition(tc);
+      // FIX: Use correct async premierepro API
+      const ppro = require('premierepro');
+      const project = await ppro.Project.getActiveProject();
+      if (project) {
+        const seq = await project.getActiveSequence();
+        if (seq && seq.setPlayerPosition) {
+          await seq.setPlayerPosition(tc);
+        }
       }
     } catch (e) {
-      console.warn('[MatchesPanel] Cannot jump to timecode — not in Premiere:', e.message);
+      console.warn('[MatchesPanel] Cannot jump to timecode:', e.message);
     }
     // Dispatch event for other panels
     document.dispatchEvent(new CustomEvent('playback:seek', { detail: { timecode: tc } }));

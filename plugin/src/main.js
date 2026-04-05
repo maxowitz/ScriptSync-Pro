@@ -130,23 +130,22 @@
     const selector = document.getElementById('project-selector');
     if (!selector) return;
 
-    // Step 1: Try to detect the active Premiere Pro project
+    // FIX: Use ClipIndexer.getProjectInfo() which uses the correct require("premierepro") API
     let premiereProject = null;
     try {
-      const { app } = require('premiere');
-      if (app && app.project) {
-        const projName = app.project.name || 'Untitled Project';
-        const seqName = app.project.activeSequence
-          ? app.project.activeSequence.name
-          : null;
+      const info = await ClipIndexer.getProjectInfo();
+      if (info) {
         premiereProject = {
-          id: 'local_' + (projName.replace(/[^a-zA-Z0-9]/g, '_')),
-          name: seqName ? `${projName} — ${seqName}` : projName,
+          id: 'local_' + (info.projectName.replace(/[^a-zA-Z0-9]/g, '_')),
+          name: info.sequenceName
+            ? `${info.projectName} — ${info.sequenceName}`
+            : info.projectName,
           source: 'premiere',
         };
+        console.log('[Main] Detected Premiere project:', premiereProject.name);
       }
     } catch (e) {
-      console.warn('[Main] Premiere API not available:', e.message);
+      console.warn('[Main] Premiere project detection failed:', e.message);
     }
 
     // Step 2: Build dropdown options
