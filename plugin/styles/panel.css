@@ -5,45 +5,60 @@
 
 /* ---- Design Tokens ---- */
 :root {
-  /* Backgrounds */
-  --bg-primary: #0a0a0b;
-  --bg-secondary: #111113;
-  --bg-card: #16161a;
-  --bg-elevated: #1c1c21;
-  --bg-hover: #222228;
+  /* Core palette */
+  --bg-base: #0a0a0c;
+  --bg-panel: #111116;
+  --bg-surface: #18181f;
+  --bg-surface-hover: #1e1e27;
+  --bg-elevated: #22222c;
+  --border-subtle: #1f1f28;
+  --border-default: #2a2a38;
+  --border-active: #3d3d55;
+  --text-primary: #e8e8f0;
+  --text-secondary: #8888a8;
+  --text-tertiary: #55556a;
+  --text-accent: #7b7bff;
+  --text-character: #9d7bff;
+  --text-action: #c8c8d8;
+  --status-online: #22c55e;
+  --status-offline: #ef4444;
+  --status-pending: #f4a623;
+  --status-processing: #60a5fa;
+  --accent-primary: #6366f1;
+  --accent-primary-hover: #7577f5;
+  --accent-selection: rgba(99, 102, 241, 0.25);
+  --accent-selection-border: rgba(99, 102, 241, 0.6);
+  --font-ui: -apple-system, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Courier New', monospace;
+
+  /* Backwards compatibility aliases */
+  --bg-primary: var(--bg-base);
+  --bg-secondary: var(--bg-panel);
+  --bg-card: var(--bg-surface);
+  --bg-hover: var(--bg-surface-hover);
+  --bg-input: var(--bg-base);
+  --border-primary: var(--border-default);
+  --text-muted: var(--text-tertiary);
+  --accent: var(--accent-primary);
+  --accent-hover: var(--accent-primary-hover);
+  --accent-muted: var(--accent-selection);
+  --success: var(--status-online);
+  --warning: var(--status-pending);
+  --danger: var(--status-offline);
+  --info: var(--status-processing);
+
+  /* Additional legacy aliases */
   --bg-active: #28282f;
-  --bg-input: #0e0e10;
-
-  /* Borders */
-  --border-primary: #2a2a30;
-  --border-subtle: #1f1f25;
-  --border-focus: #6366f1;
-
-  /* Text */
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --text-dim: #52525b;
-
-  /* Accent */
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-muted: rgba(99, 102, 241, 0.15);
-  --accent-glow: rgba(99, 102, 241, 0.25);
-
-  /* Status */
-  --success: #22c55e;
+  --border-focus: var(--accent-primary);
+  --text-dim: var(--text-tertiary);
+  --accent-glow: var(--accent-selection);
   --success-muted: rgba(34, 197, 94, 0.15);
-  --warning: #f59e0b;
   --warning-muted: rgba(245, 158, 11, 0.15);
-  --danger: #ef4444;
   --danger-muted: rgba(239, 68, 68, 0.15);
-  --info: #6366f1;
   --info-muted: rgba(99, 102, 241, 0.15);
 
   /* Typography */
   --font-sans: "Adobe Clean", "Segoe UI", -apple-system, system-ui, sans-serif;
-  --font-mono: "Source Code Pro", "SF Mono", "Consolas", monospace;
   --text-xs: 10px;
   --text-sm: 11px;
   --text-base: 12px;
@@ -823,10 +838,12 @@ textarea::placeholder {
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  font-weight: 600;
+  padding-bottom: 8px;
+  font-weight: 700;
   font-size: var(--text-sm);
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--text-accent);
+  letter-spacing: 0.06em;
   cursor: pointer;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-subtle);
@@ -860,7 +877,8 @@ textarea::placeholder {
 
 .element-action {
   padding: 3px 12px 3px 16px;
-  color: var(--text-secondary);
+  color: var(--text-action);
+  line-height: 1.7;
   font-size: var(--text-sm);
 }
 
@@ -870,13 +888,14 @@ textarea::placeholder {
   font-weight: 600;
   font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--accent);
+  letter-spacing: 0.1em;
+  color: var(--text-character);
 }
 
 .element-dialogue {
-  padding: 4px 12px 4px 16px;
+  padding: 4px 12px 4px 24px;
   color: var(--text-primary);
+  line-height: 1.75;
   cursor: pointer;
   border-left: 3px solid transparent;
   margin-left: 0;
@@ -908,8 +927,8 @@ textarea::placeholder {
 }
 
 .element-dialogue.selected {
-  background: var(--accent-muted);
-  border-left-color: var(--accent);
+  background: var(--accent-selection);
+  border-left: 2px solid var(--accent-selection-border);
 }
 
 .element-parenthetical {
@@ -925,6 +944,35 @@ textarea::placeholder {
   color: var(--text-dim);
   padding: 4px 12px;
   font-size: var(--text-xs);
+}
+
+/* Floating selection toolbar */
+.selection-toolbar {
+  position: absolute;
+  z-index: 100;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-active);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  padding: 4px;
+  display: flex;
+  gap: 2px;
+  pointer-events: auto;
+}
+.selection-toolbar button {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.selection-toolbar button:hover {
+  background: var(--accent-selection);
+  color: var(--text-accent);
 }
 
 
@@ -1557,7 +1605,7 @@ textarea::placeholder {
   font-family: var(--font-mono);
   font-size: 16px;
   font-weight: 600;
-  color: var(--success);
+  color: var(--status-online);
   background: var(--bg-primary);
   padding: 6px 12px;
   border-radius: var(--radius-md);

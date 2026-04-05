@@ -235,6 +235,53 @@
     }
   }
 
+  async function importMediaFolder(projectId) {
+    try {
+      const uxpStorage = require('uxp').storage;
+      const folder = await uxpStorage.localFileSystem.getFolder();
+      if (!folder) return;
+
+      setStatus('Scanning folder for media files...');
+      const entries = await folder.getEntries();
+      const mediaExtensions = /\.(mov|mp4|mxf|wav|aif|aiff|r3d)$/i;
+      const clips = [];
+
+      for (const entry of entries) {
+        if (entry.isFile && mediaExtensions.test(entry.name)) {
+          const parsed = ClipNameParser.parse(entry.name);
+          clips.push({
+            id: 'manual_' + clips.length + '_' + Date.now(),
+            name: parsed.name,
+            filePath: entry.nativePath,
+            source: 'manual-import',
+            scene: parsed.scene,
+            shot: parsed.shot,
+            take: parsed.take,
+            camera: parsed.camera,
+            reel: parsed.reel,
+            duration: null,
+            status: 'imported',
+            originalFilename: entry.name
+          });
+        }
+      }
+
+      if (clips.length === 0) {
+        showToast('No media files found in selected folder', 'warning');
+        setStatus('No media files found');
+        return;
+      }
+
+      DataStore.setClipIndex(projectId, clips);
+      renderClipsTab(clips);
+      setStatus(`Found ${clips.length} media file(s)`);
+      showToast(`Imported ${clips.length} clips from folder`, 'success');
+    } catch (e) {
+      console.error('[ImportFolder] Error:', e);
+      showToast('Failed to import folder: ' + e.message, 'error');
+    }
+  }
+
   function renderClipsTab(clips) {
     const root = document.getElementById('clips-panel-root');
     if (!root) return;
@@ -244,6 +291,7 @@
         <div class="panel-section-header">
           <span class="panel-section-title">Project Clips</span>
           <div>
+            <button id="btn-import-folder" class="btn btn-sm btn-secondary">Import Folder</button>
             <button id="btn-rescan-clips" class="btn btn-sm btn-secondary">Rescan</button>
             <button id="btn-transcribe-all" class="btn btn-sm btn-primary" ${clips.length === 0 ? 'disabled' : ''}>Transcribe All</button>
           </div>
@@ -309,6 +357,15 @@
         }
       });
     });
+
+    // Bind import folder
+    const importBtn = document.getElementById('btn-import-folder');
+    if (importBtn) {
+      importBtn.addEventListener('click', () => {
+        const project = TokenStore.getSelectedProject();
+        if (project) importMediaFolder(project.id || project._id);
+      });
+    }
 
     // Bind rescan
     const rescanBtn = document.getElementById('btn-rescan-clips');
@@ -407,6 +464,27 @@
 
     // Check helper sidecar
     TranscriptionEngine.isHelperAvailable();
+
+    // Auto-poll helper status every 10 seconds
+    setInterval(async () => {
+      try {
+        const settings = DataStore.getSettings();
+        const helperUrl = settings.helperUrl || 'http://localhost:9876';
+        const res = await fetch(helperUrl + '/health', { method: 'GET' });
+        const data = await res.json();
+        const el = document.getElementById('helper-status');
+        if (el) {
+          el.textContent = 'Helper: Online';
+          el.className = 'status-badge status-connected';
+        }
+      } catch {
+        const el = document.getElementById('helper-status');
+        if (el) {
+          el.textContent = 'Helper: Offline';
+          el.className = 'status-badge status-disconnected';
+        }
+      }
+    }, 10000);
 
     // Apply saved settings
     const settings = DataStore.getSettings();

@@ -267,6 +267,12 @@ const ScreenplayPanel = (() => {
         showContextMenu(e, el.dataset.lineId);
       });
     });
+
+    // FIX: Add free text selection with floating toolbar
+    const contentEl = document.getElementById('screenplay-content');
+    if (contentEl) {
+      contentEl.addEventListener('mouseup', handleTextSelection);
+    }
   }
 
   function toggleScene(sceneId) {
@@ -428,6 +434,66 @@ const ScreenplayPanel = (() => {
   function escapeHtml(text) {
     if (!text) return '';
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // FIX: Free text selection with floating toolbar
+  function handleTextSelection(e) {
+    // Remove any existing toolbar
+    const existing = document.querySelector('.selection-toolbar');
+    if (existing) existing.remove();
+
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.toString().trim()) return;
+
+    const selectedText = sel.toString().trim();
+    if (selectedText.length < 3) return; // Too short to search
+
+    const range = sel.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const container = document.getElementById('screenplay-content');
+    const containerRect = container.getBoundingClientRect();
+
+    const toolbar = document.createElement('div');
+    toolbar.className = 'selection-toolbar';
+    toolbar.style.left = `${rect.left - containerRect.left + (rect.width / 2) - 60}px`;
+    toolbar.style.top = `${rect.top - containerRect.top - 36}px`;
+
+    const findBtn = document.createElement('button');
+    findBtn.textContent = 'Find in Clips';
+    findBtn.addEventListener('click', () => {
+      toolbar.remove();
+      // Dispatch event with selected text for matching
+      document.dispatchEvent(new CustomEvent('screenplay:textSelected', {
+        detail: { text: selectedText }
+      }));
+      showToast('Searching for: "' + selectedText.substring(0, 40) + '..."', 'info');
+    });
+
+    const noteBtn = document.createElement('button');
+    noteBtn.textContent = 'Add Note';
+    noteBtn.addEventListener('click', () => {
+      toolbar.remove();
+      showToast('Notes feature coming soon', 'info');
+    });
+
+    toolbar.appendChild(findBtn);
+    toolbar.appendChild(noteBtn);
+    container.style.position = 'relative';
+    container.appendChild(toolbar);
+
+    // Dismiss on escape or outside click
+    const dismiss = (evt) => {
+      if (evt.type === 'keydown' && evt.key !== 'Escape') return;
+      toolbar.remove();
+      document.removeEventListener('keydown', dismiss);
+      document.removeEventListener('mousedown', dismiss);
+    };
+    setTimeout(() => {
+      document.addEventListener('keydown', dismiss);
+      document.addEventListener('mousedown', (evt) => {
+        if (!toolbar.contains(evt.target)) dismiss(evt);
+      }, { once: true });
+    }, 50);
   }
 
   return {
