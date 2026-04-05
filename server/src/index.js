@@ -23,6 +23,7 @@ const io = setupSocket(server, prisma);
 app.set('io', io);
 app.set('prisma', prisma);
 
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({
   origin: [
