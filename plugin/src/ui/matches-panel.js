@@ -57,15 +57,27 @@ const MatchesPanel = (() => {
     const empty = document.getElementById('matches-empty');
     if (!container) return;
 
-    // Load clips and their transcriptions
+    // FIX: Load clips from ALL known project IDs — clips may have been stored
+    // under a different project ID than the currently selected one
     const project = TokenStore.getSelectedProject();
-    if (!project) return;
+    const projectId = project ? (project.id || project._id) : 'local_default';
+    const possibleIds = [projectId, 'local_default', 'local_Local_Project'];
 
-    const projectId = project.id || project._id;
-    let clips = DataStore.getClipIndex(projectId);
-    if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_default');
-    if (!clips || clips.length === 0) clips = DataStore.getClipIndex('local_Local_Project');
-    if (!clips || clips.length === 0) {
+    // Also try any ID that looks like it was auto-created
+    if (projectId && !possibleIds.includes(projectId)) possibleIds.unshift(projectId);
+
+    let clips = [];
+    for (const pid of possibleIds) {
+      const found = DataStore.getClipIndex(pid);
+      if (found && found.length > 0) {
+        clips = found;
+        console.log(`[MatchesPanel] Found ${clips.length} clips under project ID: ${pid}`);
+        break;
+      }
+    }
+
+    if (clips.length === 0) {
+      console.warn('[MatchesPanel] No clips found under any project ID');
       if (empty) { empty.classList.remove('hidden'); }
       container.classList.add('hidden');
       return;
